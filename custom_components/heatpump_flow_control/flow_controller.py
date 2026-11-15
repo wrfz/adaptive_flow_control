@@ -27,7 +27,7 @@ _LOGGER = logging.getLogger(__name__)
 
 # Pickle-Format Version für Migration
 # Erhöhe diese Zahl bei inkompatiblen Code-Änderungen
-PICKLE_VERSION = 4
+PICKLE_VERSION = 5
 
 # Gewichtung für synthetische Trainingsdaten
 # Niedrigerer Wert = echte Daten haben stärkeren Einfluss
@@ -68,6 +68,7 @@ class FlowController:
         self.longterm_history_days = 7
 
         # Initialize all attributes (will be set in _setup())
+        self._enabled = True  # Default: aktiv, wird vom Switch-Entity überschrieben
         self.erfahrungs_liste: list[Erfahrung] = []  # Speichert alle Predictions mit Features
         self.aussen_temp_history: HistoryBuffer = HistoryBuffer()
 
@@ -142,6 +143,10 @@ class FlowController:
         self.metric = state["metric"]
         self.erfahrungs_liste = state["erfahrungs_liste"]
         self.aussen_temp_history = state["aussen_temp_history"]
+
+        # _enabled wird nicht gepickelt: hier sicher initialisieren,
+        # der Switch-Entity setzt den echten Wert in async_added_to_hass().
+        self._enabled = True
 
         # Note: Configuration parameters must be set via update_config() after unpickling
 
