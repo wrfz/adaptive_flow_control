@@ -35,6 +35,13 @@ PICKLE_VERSION = 5
 # Berechnung: 3 Tage × 48 pred/Tag × 2.0 weight = 288 vs 70.200 × 0.001 = 70
 SYNTHETIC_WEIGHT = 0.1
 
+# Lern-Dynamik: großer Korrkturfaktor + Sammelevaluation aller wartenden
+# Erfahrungen mit derselben aktuellen Abweichung erzeugte Oszillation.
+KORREKTUR_FAKTOR = 1.5          # war 3.0: gedämpfte Zielkorrektur
+MAX_WEIGHT = 5.0                # Cap für das Lerngewicht einer Erfahrung
+KORREKTUR_DECAY_HOURS = 24.0    # aktuelle Abweichung gehört v.a. zu jungen Erfahrungen
+MIN_KORREKTUR_FACTOR = 0.1      # darunter: Erfahrung überspringen statt Selbstbestätigung lernen
+
 
 class FlowController:
     """Flow Controller für Vorlauf-Temperatur Regelung."""
@@ -349,24 +356,44 @@ class FlowController:
         self,
         erfahrung: Erfahrung,
         raum_ist_jetzt: float,
-    ) -> VorlaufSollWeight:
+        age_hours: float,
+    ) -> VorlaufSollWeight | None:
         """Berechnet korrigierten Vorlauf mit stetiger, symmetrischer Gewichtung.
 
         Vollständig stetige Funktion ohne Schwellenwerte oder Sprünge.
         Berücksichtigt physikalische Grenzen der thermischen Leistung.
+
+        Die aktuelle Raum-Abweichung wird mit einem Recency-Faktor gewichtet:
+        Je älter die Erfahrung, desto weniger gehört die Abweichung zu ihr
+        (sie spiegelt viele nachfolgende Regelentscheidungen wider). Bei zu
+        geringer Relevanz wird None zurückgegeben und die Erfahrung
+        übersprungen, statt das Modell auf seine eigene Vorhersage zu
+        trainieren (Selbstbestätigung).
         """
 
         # Abweichung: Positiv = zu kalt, Negativ = zu warm
         abweichung = erfahrung.raum_soll - raum_ist_jetzt
         abweichung_abs = abs(abweichung)
 
+        # Recency: 1.0 = frisch (alter ~ min_reward_hours), 0.0 = alt
+        recency = max(0.0, 1.0 - age_hours / KORREKTUR_DECAY_HOURS)
+
+        if recency < MIN_KORREKTUR_FACTOR:
+            _LOGGER.debug(
+                "Erfahrung %.1fh alt: Recency %.2f < %.2f, überspringe",
+                age_hours,
+                recency,
+                MIN_KORREKTUR_FACTOR,
+            )
+            return None
+
         # Prüfe ob Wärmepumpe am Limit war
         thermische_leistung_relativ = erfahrung.features.thermische_leistung_relativ
         am_oberen_limit = thermische_leistung_relativ > 0.95    # > 95% der max. Leistung
         am_unteren_limit = thermische_leistung_relativ < 0.05   # <  5% der max. Leistung
 
-        weight = 0.5 + abweichung_abs ** 1.5
-        korrektur_faktor = 3.0
+        weight = min(0.5 + abweichung_abs ** 1.5, MAX_WEIGHT)
+        korrektur_faktor = KORREKTUR_FAKTOR
 
         # Reduziere Korrektur wenn Pumpe am Limit war
         if am_oberen_limit and abweichung > 0:  # Zu kalt UND am oberen Leistungslimit
@@ -386,6 +413,11 @@ class FlowController:
                 thermische_leistung_relativ * 100
             )
 
+        # Dämpfe Korrektur und Gewicht nach Recency: junge Erfahrungen
+        # bekommen die volle Korrektur, alte eine abgeschwächte.
+        korrektur_faktor *= recency
+        weight *= recency
+
         korrigierter_vorlauf = erfahrung.vorlauf_soll + abweichung * korrektur_faktor
 
         # Begrenze auf physikalisch möglichen Bereich
@@ -395,8 +427,11 @@ class FlowController:
         )
 
         _LOGGER.info(
-            "Erfahrung bewertet: Abw=%.2f°C, Leistung=%.0f%%, Vorlauf %.1f→%.1f°C, Weight=%.2f",
+            "Erfahrung bewertet: Abw=%.2f°C, Alter=%.1fh, Recency=%.2f, Leistung=%.0f%%, "
+            "Vorlauf %.1f→%.1f°C, Weight=%.2f",
             abweichung,
+            age_hours,
+            recency,
             thermische_leistung_relativ * 100,
             erfahrung.vorlauf_soll,
             korrigierter_vorlauf,
@@ -434,8 +469,16 @@ class FlowController:
             try:
                 korrigierter_vorlauf_weight = self._bewerte_erfahrung(
                     erfahrung=erfahrung,
-                    raum_ist_jetzt=current_raum_ist
+                    raum_ist_jetzt=current_raum_ist,
+                    age_hours=age_hours,
                 )
+
+                if korrigierter_vorlauf_weight is None:
+                    # Zu alt für eine aussagekräftige Korrektur:
+                    # als verarbeitet markieren, statt Selbstbestätigung zu lernen
+                    erfahrung.gelernt = True
+                    stats["uebersprungen"] += 1
+                    continue
 
                 # Lerne mit korrigiertem Vorlauf
                 self.model.learn_one(
