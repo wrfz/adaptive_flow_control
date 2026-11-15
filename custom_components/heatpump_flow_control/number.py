@@ -128,6 +128,12 @@ class FlowControlNumber(NumberEntity, RestoreEntity):
 
         self._tasks: set[asyncio.Task[None]] = set()
 
+        # Serialisiert Update-Zyklen: überlappende Läufe (Intervall-Timer,
+        # Sensor-Event, erster Start) würden den Controller parallel
+        # mutieren (river-Model, erfahrungs_liste, HistoryBuffer) und
+        # während des Pickle-Save korrupte Daten erzeugen.
+        self._update_lock = asyncio.Lock()
+
     @property
     def _controller(self):
         """Get FlowController from runtime_data."""
@@ -207,6 +213,9 @@ class FlowControlNumber(NumberEntity, RestoreEntity):
             self._state_change_listener()
         if self._heating_state_listener:
             self._heating_state_listener()
+
+        for task in list(self._tasks):
+            task.cancel()
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
@@ -359,6 +368,17 @@ class FlowControlNumber(NumberEntity, RestoreEntity):
 
     async def _async_update_vorlauf_soll(self, now=None) -> None:
         """Update the Vorlauf-Soll value."""
+
+        # Überspringe parallele Aufrufe: ein laufender Update-Zyklus
+        # soll nicht von Timer/Sensor-Event doppelt gestartet werden.
+        if self._update_lock.locked():
+            _LOGGER.debug("Update already in progress - skipping")
+            return
+        async with self._update_lock:
+            await self._async_update_vorlauf_soll_locked(now)
+
+    async def _async_update_vorlauf_soll_locked(self, now=None) -> None:
+        """Update the Vorlauf-Soll value (serialized by _update_lock)."""
 
         is_heating = await self._is_heating_mode()
 
