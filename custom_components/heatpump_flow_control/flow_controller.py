@@ -1,4 +1,4 @@
-"""Machine Learning Controller für Wärmepumpen-Regelung."""
+"""Machine Learning Controller for heat pump control."""
 
 from datetime import datetime, timedelta
 import logging
@@ -26,28 +26,28 @@ from .types import (
 
 _LOGGER = logging.getLogger(__name__)
 
-# Pickle-Format Version für Migration
-# Erhöhe diese Zahl bei inkompatiblen Code-Änderungen
+# Pickle format version for migration
+# Increment this number on incompatible code changes
 PICKLE_VERSION = 5
 
-# Gewichtung für synthetische Trainingsdaten
-# Niedrigerer Wert = echte Daten haben stärkeren Einfluss
-# Mit 0.001: Echte Daten dominieren (>80%) nach ~3 Tagen
-# Berechnung: 3 Tage × 48 pred/Tag × 2.0 weight = 288 vs 70.200 × 0.001 = 70
+# Weighting for synthetic training data
+# Lower value = real data have a stronger influence
+# With 0.001: real data dominate (>80%) after ~3 days
+# Calculation: 3 days × 48 pred/day × 2.0 weight = 288 vs 70.200 × 0.001 = 70
 SYNTHETIC_WEIGHT = 0.1
 
-# Lern-Dynamik: großer Korrkturfaktor + Sammelevaluation aller wartenden
-# Erfahrungen mit derselben aktuellen Abweichung erzeugte Oszillation.
-KORREKTUR_FAKTOR = 1.5          # war 3.0: gedämpfte Zielkorrektur
-MAX_WEIGHT = 5.0                # Cap für das Lerngewicht einer Erfahrung
-KORREKTUR_DECAY_HOURS = 24.0    # aktuelle Abweichung gehört v.a. zu jungen Erfahrungen
-MIN_KORREKTUR_FACTOR = 0.1      # darunter: Erfahrung überspringen statt Selbstbestätigung lernen
+# Learning dynamics: large correction factor + batch evaluation of all pending
+# experiences with the same current deviation caused oscillation.
+KORREKTUR_FAKTOR = 1.5          # was 3.0: damped target correction
+MAX_WEIGHT = 5.0                # Cap for the learning weight of an experience
+KORREKTUR_DECAY_HOURS = 24.0    # the current deviation belongs mainly to young experiences
+MIN_KORREKTUR_FACTOR = 0.1      # below: skip experience instead of learning self-confirmation
 
 
 class FlowController:
-    """Flow Controller für Vorlauf-Temperatur Regelung."""
+    """Flow Controller for Vorlauf temperature control."""
 
-    # Pickle-Version für Migrations-Check
+    # Pickle version for migration check
     pickle_version: int = PICKLE_VERSION
 
     # Model attributes (initialized in _setup())
@@ -72,24 +72,24 @@ class FlowController:
         self.min_thermische_leistung = min_thermische_leistung
         self.max_thermische_leistung = max_thermische_leistung
         self.sanity_band = sanity_band
-        self.pickle_version = PICKLE_VERSION  # Für Migrations-Check
-        self.min_reward_hours = 4.0  # Lernen aus Features die 4h alt sind
+        self.pickle_version = PICKLE_VERSION  # For migration check
+        self.min_reward_hours = 4.0  # Learning from features that are 4h old
         self.short_history_hours = 3.0
         self.longterm_history_days = 7
 
         # Initialize all attributes (will be set in _setup())
-        self._enabled = True  # Default: aktiv, wird vom Switch-Entity überschrieben
-        self.erfahrungs_liste: list[Erfahrung] = []  # Speichert alle Predictions mit Features
+        self._enabled = True  # Default: active, is overwritten by the switch entity
+        self.erfahrungs_liste: list[Erfahrung] = []  # Stores all predictions with features
         self.aussen_temp_history: HistoryBuffer = HistoryBuffer()
-        # Kumulativer Zähler aller gelernten Erfahrungen (persistiert;
-        # die Liste selbst verwirft gelernte Einträge beim Cleanup)
+        # Cumulative counter of all learned experiences (persisted;
+        # the list itself discards learned entries on cleanup)
         self.erfahrungen_gelernt_total = 0
 
     def setup(self, iterations: int = 0) -> None:
         """Initialize the flow controller."""
         _LOGGER.info("setup()")
 
-        # River Online-Learning Model
+        # River online learning model
         self.model = compose.Pipeline(
             preprocessing.StandardScaler(),
             linear_model.LinearRegression(
@@ -97,18 +97,18 @@ class FlowController:
             ),
         )
 
-        # ZEITBASIERTE Historie für Trend-Berechnung
-        self.aussen_temp_history = HistoryBuffer()  # Kurze Historie für Trends (letzte 2-3 Stunden)
-        self.short_history_hours = 3.0  # Kurze Historie: 3 Stunden
+        # TIME-BASED history for trend calculation
+        self.aussen_temp_history = HistoryBuffer()  # Short history for trends (last 2-3 hours)
+        self.short_history_hours = 3.0  # Short history: 3 hours
 
-        # Langzeit-Historie (1 Woche)
+        # Long-term history (1 week)
         self.longterm_history_days = 7
 
-        # Metriken
+        # Metrics
         self.metric = metrics.MAE()
         self.erfahrungen_gelernt_total = 0
 
-        # Model mit synthetischen Daten trainieren
+        # Train model with synthetic data
         self._train_synthetic_data(iterations)
 
         _LOGGER.info(
@@ -139,7 +139,7 @@ class FlowController:
             # Experience list for delayed learning
             "erfahrungs_liste": self.erfahrungs_liste,
 
-            # Kumulativer Zähler gelernter Erfahrungen
+            # Cumulative counter of learned experiences
             "erfahrungen_gelernt_total": self.erfahrungen_gelernt_total,
 
             # Temperature histories for trend calculation
@@ -160,11 +160,11 @@ class FlowController:
         self.metric = state["metric"]
         self.erfahrungs_liste = state["erfahrungs_liste"]
         self.aussen_temp_history = state["aussen_temp_history"]
-        # Alter Pickle-State ohne Zähler: bei 0 starten
+        # Old pickle state without counter: start at 0
         self.erfahrungen_gelernt_total = state.get("erfahrungen_gelernt_total", 0)
 
-        # _enabled wird nicht gepickelt: hier sicher initialisieren,
-        # der Switch-Entity setzt den echten Wert in async_added_to_hass().
+        # _enabled is not pickled: initialize it safely here,
+        # the switch entity sets the real value in async_added_to_hass().
         self._enabled = True
 
         # Note: Configuration parameters must be set via update_config() after unpickling
@@ -202,7 +202,7 @@ class FlowController:
             learning_rate: Learning rate for the model
             min_thermische_leistung: Minimum thermal power in kW
             max_thermische_leistung: Maximum thermal power in kW
-            sanity_band: Toleranzband um die Heizkurve-Fallback in K
+            sanity_band: tolerance band around the heating curve fallback in K
         """
         self.min_vorlauf = min_vorlauf
         self.max_vorlauf = max_vorlauf
@@ -225,23 +225,23 @@ class FlowController:
             self.max_thermische_leistung,
         )
 
-    def _heizkurve_fallback(self, aussen_temp: float, raum_abweichung: float) -> float:
-        """Heizkurve für synthetisches Training.
+    def _heating_curve_fallback(self, aussen_temp: float, raum_abweichung: float) -> float:
+        """Heating curve for synthetic training.
 
-        Typische Heizkurve: Vorlauf = A - B * Außentemperatur.
+        Typical heating curve: Vorlauf = A - B * outdoor temperature.
 
         Args:
-            aussen_temp: Außentemperatur in Grad Celsius
-            raum_abweichung: Positiv values mean room is too cold and negative too warm.
+            aussen_temp: outdoor temperature in degrees Celsius
+            raum_abweichung: Positive values mean room is too cold and negative too warm.
         """
 
-        # Heizkurve: 15°C → min-vorlauf bis -20°C → max-vorlauf
-        p0 = TempVorlauf(15, self.min_vorlauf) # Aussentemperaur, Vorlauf
+        # Heating curve: 15°C → min-vorlauf up to -20°C → max-vorlauf
+        p0 = TempVorlauf(15, self.min_vorlauf) # outdoor temperature, Vorlauf
         p1 = TempVorlauf(-20.0, self.max_vorlauf)
 
         vorlauf = p0.vorlauf + (p1.vorlauf - p0.vorlauf) / (p1.temp - p0.temp) * (aussen_temp - p0.temp)
 
-        # Korrektur basierend auf Raum-Abweichung
+        # Correction based on room deviation
         vorlauf += raum_abweichung * 2.0
 
         v_min = min(p0.vorlauf, p1.vorlauf)
@@ -250,36 +250,36 @@ class FlowController:
         return max(v_min, min(vorlauf, v_max))
 
     def _train_synthetic_data(self, iterations: int) -> None:
-        """Trainiere Model mit synthetischen Daten aus der Heizkurve."""
+        """Train the model with synthetic data from the heating curve."""
 
         temp_min = -20.0
         temp_max = 20.0
         synthetic_count = 0
 
-        _LOGGER.info("_train_synthetic_data() => Temperaturbereich %.1f bis %.1f°C", temp_min, temp_max)
+        _LOGGER.info("_train_synthetic_data() => Temperature range %.1f to %.1f°C", temp_min, temp_max)
 
-        # Viele Trainingsdurchläufe für präzises Lernen
+        # Many training runs for precise learning
         if iterations > 0:
             start_time = time_module.time()
             for _ in range(iterations):
                 for t_aussen in range(int(temp_min), int(temp_max) + 1):
-                    # Temperaturbereich 16-25°C für Raum-Soll
+                    # Temperature range 16-25°C for room setpoint
                     for raum_soll in range(16, 26):
-                        # Breite Abweichungen für robustes Training (auch große Abweichungen wie im echten Betrieb)
-                        for raum_abweichung in range(-5, 5 + 1): # -5 bis +5°C
+                        # Wide deviations for robust training (also large deviations as in real operation)
+                        for raum_abweichung in range(-5, 5 + 1): # -5 to +5°C
                             raum_ist = raum_soll - raum_abweichung
 
-                            # Berechne Vorlauf-Soll aus Heizkurve
-                            vorlauf_soll = self._heizkurve_fallback(
+                            # Calculate Vorlauf-Soll from heating curve
+                            vorlauf_soll = self._heating_curve_fallback(
                                 float(t_aussen), raum_abweichung
                             )
 
-                            # Trainiere das Modell mit synthetischen Features
+                            # Train the model with synthetic features
                             synthetic_features = Features(
                                 aussen_temp=float(t_aussen),
                                 raum_abweichung=raum_abweichung,
                                 temp_diff=float(t_aussen) - raum_ist,
-                                thermische_leistung_relativ=0.5,        # 50% der max. Leistung
+                                thermische_leistung_relativ=0.5,        # 50% of max. power
                                 aussen_trend_1h=0.0,
                                 stunde_sin=0.0,
                                 stunde_cos=1.0,
@@ -290,67 +290,67 @@ class FlowController:
                             self.model.learn_one(
                                 synthetic_features.to_dict(),
                                 vorlauf_soll,
-                                sample_weight=SYNTHETIC_WEIGHT  # Schwächere Gewichtung für schnelle Anpassung
+                                sample_weight=SYNTHETIC_WEIGHT  # Weaker weighting for fast adaptation
                             )
                             synthetic_count += 1
 
             elapsed_time = time_module.time() - start_time
 
             _LOGGER.info(
-                "Synthetisches Training abgeschlossen: %d Datenpunkte (weight=%.1f) in %.2f Sekunden",
+                "Synthetic training completed: %d data points (weight=%.1f) in %.2f seconds",
                 synthetic_count,
                 SYNTHETIC_WEIGHT,
                 elapsed_time,
             )
 
-    def _erstelle_features(
+    def _create_features(
         self,
         sensor_values: SensorValues,
     ) -> Features:
-        """Erstellt Feature-Dictionary für das Model.
+        """Creates the feature dictionary for the model.
 
         Args:
-            aussen_temp: Außentemperatur
-            raum_ist: Ist-Raumtemperatur
-            raum_soll: Soll-Raumtemperatur
-            vorlauf_ist: Ist-Vorlauf
+            aussen_temp: outdoor temperature
+            raum_ist: current room temperature
+            raum_soll: room setpoint temperature
+            vorlauf_ist: current Vorlauf
         """
 
-        _LOGGER.info("_erstelle_features()")
+        _LOGGER.info("_create_features()")
 
         now = datetime.now()
 
         self.aussen_temp_history.append(DateTimeTemperatur(timestamp=now, temperature=sensor_values.aussen_temp))
 
-        # Entferne Einträge die älter als short_history_hours sind
+        # Remove entries older than short_history_hours
         cutoff_time = now - timedelta(hours=self.short_history_hours)
 
         while self.aussen_temp_history and self.aussen_temp_history.first.timestamp < cutoff_time:
             self.aussen_temp_history.popleft()
 
-        # Raum-Abweichung
+        # Room deviation
         raum_abweichung = sensor_values.raum_soll - sensor_values.raum_ist
 
-        # Tageszeit als zyklisches Feature (Default: Mittag)
+        # Time of day as cyclic feature (default: noon)
         stunde = now.hour + now.minute / 60.0
         stunde_sin = math.sin(2 * math.pi * stunde / 24)
         stunde_cos = math.cos(2 * math.pi * stunde / 24)
 
-        # Wochentag als zyklisches Feature (Default: Mittwoch)
+        # Weekday as cyclic feature (default: Wednesday)
         wochentag = now.weekday()
         wochentag_sin = math.sin(2 * math.pi * wochentag / 7)
         wochentag_cos = math.cos(2 * math.pi * wochentag / 7)
 
-        # Thermische Leistung Features
+        # Thermal power features
         thermische_leistung = sensor_values.thermische_leistung or 0.0
 
-        # Relativer Wert: 0 = min, 1 = max, 0.5 = Mitte
+        # Relative value: 0 = min, 1 = max, 0.5 = middle
         if self.max_thermische_leistung > self.min_thermische_leistung:
             thermische_leistung_relativ = (
                 (thermische_leistung - self.min_thermische_leistung) /
                 (self.max_thermische_leistung - self.min_thermische_leistung)
             )
-            # Clampe auf 0-1 Range
+            # Clamp to 0-1 range
             thermische_leistung_relativ = max(0.0, min(1.0, thermische_leistung_relativ))
         else:
             thermische_leistung_relativ = 0.5
@@ -367,93 +367,92 @@ class FlowController:
             wochentag_cos = wochentag_cos,
         )
 
-    def _bewerte_erfahrung(
+    def _evaluate_erfahrung(
         self,
         erfahrung: Erfahrung,
         raum_ist_jetzt: float,
         age_hours: float,
     ) -> VorlaufSollWeight | None:
-        """Berechnet korrigierten Vorlauf mit stetiger, symmetrischer Gewichtung.
+        """Calculates the corrected Vorlauf with steady, symmetric weighting.
 
-        Vollständig stetige Funktion ohne Schwellenwerte oder Sprünge.
-        Berücksichtigt physikalische Grenzen der thermischen Leistung.
+        Fully continuous function without thresholds or jumps.
+        Takes the physical limits of the thermal power into account.
 
-        Die aktuelle Raum-Abweichung wird mit einem Recency-Faktor gewichtet:
-        Je älter die Erfahrung, desto weniger gehört die Abweichung zu ihr
-        (sie spiegelt viele nachfolgende Regelentscheidungen wider). Bei zu
-        geringer Relevanz wird None zurückgegeben und die Erfahrung
-        übersprungen, statt das Modell auf seine eigene Vorhersage zu
-        trainieren (Selbstbestätigung).
+        The current room deviation is weighted with a recency factor:
+        the older the experience, the less the deviation belongs to it
+        (it reflects many subsequent control decisions). If relevance is too
+        low, None is returned and the experience is skipped, instead of
+        training the model on its own prediction (self-confirmation).
         """
 
-        # Abweichung: Positiv = zu kalt, Negativ = zu warm
+        # Deviation: positive = too cold, negative = too warm
         abweichung = erfahrung.raum_soll - raum_ist_jetzt
         abweichung_abs = abs(abweichung)
 
-        # Recency: 1.0 = frisch (alter ~ min_reward_hours), 0.0 = alt
+        # Recency: 1.0 = fresh (age ~ min_reward_hours), 0.0 = old
         recency = max(0.0, 1.0 - age_hours / KORREKTUR_DECAY_HOURS)
 
         if recency < MIN_KORREKTUR_FACTOR:
             _LOGGER.debug(
-                "Erfahrung %.1fh alt: Recency %.2f < %.2f, überspringe",
+                "Experience %.1fh old: recency %.2f < %.2f, skipping",
                 age_hours,
                 recency,
                 MIN_KORREKTUR_FACTOR,
             )
             return None
 
-        # Prüfe ob Wärmepumpe am Limit war
+        # Check whether the heat pump was at the limit
         thermische_leistung_relativ = erfahrung.features.thermische_leistung_relativ
-        am_oberen_limit = thermische_leistung_relativ > 0.95    # > 95% der max. Leistung
-        am_unteren_limit = thermische_leistung_relativ < 0.05   # <  5% der max. Leistung
+        am_oberen_limit = thermische_leistung_relativ > 0.95    # > 95% of max. power
+        am_unteren_limit = thermische_leistung_relativ < 0.05   # <  5% of max. power
 
         weight = min(0.5 + abweichung_abs ** 1.5, MAX_WEIGHT)
         korrektur_faktor = KORREKTUR_FAKTOR
 
-        # Reduziere Korrektur wenn Pumpe am Limit war
-        if am_oberen_limit and abweichung > 0:  # Zu kalt UND am oberen Leistungslimit
-            # Pumpe kann nicht mehr leisten → reduziere Korrektur stark
+        # Reduce correction when pump was at the limit
+        if am_oberen_limit and abweichung > 0:  # Too cold AND at the upper power limit
+            # Pump cannot deliver more → strongly reduce correction
             korrektur_faktor *= 0.2
-            weight *= 0.5  # Reduziere auch Lerngewicht
+            weight *= 0.5  # Also reduce learning weight
             _LOGGER.debug(
-                "Pumpe am oberen Leistungslimit (%.0f%%), reduziere Korrektur",
+                "Pump at the upper power limit (%.0f%%), reducing correction",
                 thermische_leistung_relativ * 100
             )
-        elif am_unteren_limit and abweichung < 0:  # Zu warm UND am unteren Leistungslimit
-            # Pumpe kann nicht weniger leisten → reduziere Korrektur stark
+        elif am_unteren_limit and abweichung < 0:  # Too warm AND at the lower power limit
+            # Pump cannot deliver less → strongly reduce correction
             korrektur_faktor *= 0.2
             weight *= 0.5
             _LOGGER.debug(
-                "Pumpe am unteren Leistungslimit (%.0f%%), reduziere Korrektur",
+                "Pump at the lower power limit (%.0f%%), reducing correction",
                 thermische_leistung_relativ * 100
             )
 
-        # Dämpfe Korrektur und Gewicht nach Recency: junge Erfahrungen
-        # bekommen die volle Korrektur, alte eine abgeschwächte.
+        # Damp correction and weight by recency: young experiences
+        # get the full correction, old ones a damped one.
         korrektur_faktor *= recency
         weight *= recency
 
-        # Gewichts-Faktor der Erfahrung (z. B. 0.3 für raum_soll-getriggerte
-        # Sofort-Zyklen): dämpft nur das Lerngewicht, nie die Korrektur.
+        # Weight factor of the experience (e. g. 0.3 for raum_soll-triggered
+        # immediate cycles): damps only the learning weight, never the correction.
         if erfahrung.gewicht_faktor != 1.0:
             weight *= erfahrung.gewicht_faktor
             _LOGGER.debug(
-                "Gewichtsfaktor %.2f angewendet (Gewicht=%.2f)",
+                "Weight factor %.2f applied (weight=%.2f)",
                 erfahrung.gewicht_faktor,
                 weight,
             )
 
         korrigierter_vorlauf = erfahrung.vorlauf_soll + abweichung * korrektur_faktor
 
-        # Begrenze auf physikalisch möglichen Bereich
+        # Limit to the physically possible range
         korrigierter_vorlauf = max(
             self.min_vorlauf,
             min(self.max_vorlauf, korrigierter_vorlauf)
         )
 
         _LOGGER.info(
-            "Erfahrung bewertet: Abw=%.2f°C, Alter=%.1fh, Recency=%.2f, Leistung=%.0f%%, "
-            "Vorlauf %.1f→%.1f°C, Weight=%.2f",
+            "Experience evaluated: dev=%.2f°C, age=%.1fh, recency=%.2f, power=%.0f%%, "
+            "Vorlauf %.1f→%.1f°C, weight=%.2f",
             abweichung,
             age_hours,
             recency,
@@ -465,47 +464,47 @@ class FlowController:
 
         return VorlaufSollWeight(vorlauf_soll=korrigierter_vorlauf, weight=weight)
 
-    def lerne_aus_features(self, current_raum_ist: float) -> dict[str, int]:
-        """Lernt aus Features die vor 4h gespeichert wurden.
+    def learn_from_features(self, current_raum_ist: float) -> dict[str, int]:
+        """Learns from features stored 4h ago.
 
         Args:
-            current_raum_ist: Aktuelle Raumtemperatur (für Bewertung)
+            current_raum_ist: current room temperature (for evaluation)
 
         Returns:
-            Statistiken über das Lernen
+            Statistics about the learning
         """
         stats = {"gelernt": 0, "uebersprungen": 0}
 
         now = datetime.now()
 
-        # Finde Erfahrungen die alt genug sind (4h) und noch nicht gelernt wurden
+        # Find experiences that are old enough (4h) and not yet learned
         for erfahrung in self.erfahrungs_liste:
             if erfahrung.gelernt:
                 continue
 
-            # Prüfe ob Erfahrung alt genug ist (4h)
+            # Check whether the experience is old enough (4h)
             age_hours = (now - erfahrung.timestamp).total_seconds() / 3600
 
             if age_hours < self.min_reward_hours:
                 stats["uebersprungen"] += 1
                 continue
 
-            # Bewerte Erfahrung mit aktueller Raumtemperatur
+            # Evaluate experience with current room temperature
             try:
-                korrigierter_vorlauf_weight = self._bewerte_erfahrung(
+                korrigierter_vorlauf_weight = self._evaluate_erfahrung(
                     erfahrung=erfahrung,
                     raum_ist_jetzt=current_raum_ist,
                     age_hours=age_hours,
                 )
 
                 if korrigierter_vorlauf_weight is None:
-                    # Zu alt für eine aussagekräftige Korrektur:
-                    # als verarbeitet markieren, statt Selbstbestätigung zu lernen
+                    # Too old for a meaningful correction:
+                    # mark as processed, instead of learning self-confirmation
                     erfahrung.gelernt = True
                     stats["uebersprungen"] += 1
                     continue
 
-                # Lerne mit korrigiertem Vorlauf
+                # Learn with the corrected Vorlauf
                 self.model.learn_one(
                     erfahrung.features.to_dict(),
                     korrigierter_vorlauf_weight.vorlauf_soll,
@@ -516,7 +515,7 @@ class FlowController:
                 stats["gelernt"] += 1
 
                 _LOGGER.info(
-                    "✓ Gelernt aus Erfahrung von vor %.1fh: Vorlauf %.1f°C → %.1f°C (weight=%.1f)",
+                    "✓ Learned from experience from %.1fh ago: Vorlauf %.1f°C → %.1f°C (weight=%.1f)",
                     age_hours,
                     erfahrung.vorlauf_soll,
                     korrigierter_vorlauf_weight.vorlauf_soll,
@@ -524,11 +523,11 @@ class FlowController:
                 )
 
             except Exception as e:
-                _LOGGER.error("Fehler beim Lernen aus Feature: %s", e)
+                _LOGGER.error("Error learning from feature: %s", e)
 
-        # Cleanup: Entferne gelernte und sehr alte Erfahrungen
-        # - Gelernte Erfahrungen werden nicht mehr benötigt
-        # - Sehr alte ungelernte Erfahrungen (älter als 7 Tage) ebenfalls entfernen
+        # Cleanup: remove learned and very old experiences
+        # - Learned experiences are no longer needed
+        # - Very old unlearned experiences (older than 7 days) are also removed
         max_age_days = 7
         cutoff_cleanup = now - timedelta(days=max_age_days)
         self.erfahrungs_liste = [
@@ -536,13 +535,13 @@ class FlowController:
             if not e.gelernt and e.timestamp > cutoff_cleanup
         ]
 
-        # Kumulativer Zähler: gelernte Einträge verschwinden aus der Liste,
-        # deshalb nicht daraus zählen
+        # Cumulative counter: learned entries disappear from the list,
+        # therefore do not count from it
         self.erfahrungen_gelernt_total += stats["gelernt"]
 
         if stats["gelernt"] > 0:
             _LOGGER.info(
-                "Feature-Lernen abgeschlossen: %d gelernt, %d übersprungen, %d in Liste",
+                "Feature learning completed: %d learned, %d skipped, %d in list",
                 stats["gelernt"],
                 stats["uebersprungen"],
                 len(self.erfahrungs_liste),
@@ -550,53 +549,53 @@ class FlowController:
 
         return stats
 
-    def berechne_vorlauf_soll(
+    def calculate_vorlauf_soll(
         self,
         sensor_values: SensorValues,
         gewicht_faktor: float = 1.0,
     ) -> VorlaufSollAndFeatures:
-        """Berechnet Vorlauf-Soll basierend auf Model und Features.
+        """Calculates Vorlauf-Soll based on model and features.
 
         Args:
-            sensor_values: Sensorwerte für die Berechnung
-            gewicht_faktor: Lerngewicht-Faktor der neuen Erfahrung
-                (1.0 = normal, < 1 = gedämpft, z. B. Sofort-Zyklen nach
-                raum_soll-Änderung)
+            sensor_values: sensor values for the calculation
+            gewicht_faktor: learning weight factor of the new experience
+                (1.0 = normal, < 1 = damped, e. g. immediate cycles after
+                raum_soll change)
 
         Returns:
-            VorlaufSollAndFeatures: Vorlauf-Soll und zugehörige Features
+            VorlaufSollAndFeatures: Vorlauf-Soll and associated features
         """
 
-        _LOGGER.info("berechne_vorlauf_soll()")
-        features = self._erstelle_features(sensor_values)
+        _LOGGER.info("calculate_vorlauf_soll()")
+        features = self._create_features(sensor_values)
 
-        # Fallback-Heizkurve als Referenz für das Sanity-Band
-        fallback_vorlauf = self._heizkurve_fallback(
+        # Fallback heating curve as reference for the sanity band
+        fallback_vorlauf = self._heating_curve_fallback(
             sensor_values.aussen_temp, features.raum_abweichung
         )
 
-        # Model für Prediction verwenden
+        # Use the model for prediction
         try:
             raw_prediction = self.model.predict_one(features.to_dict())
             _LOGGER.info(
-                "Model-Prediction: %.2f°C (Außen: %.1f°C, Raum-Abw: %.2f°C, Vorlauf-Ist: %.1f°C)",
+                "Model-Prediction: %.2f°C (outdoor: %.1f°C, room-dev: %.2f°C, Vorlauf-Ist: %.1f°C)",
                 raw_prediction,
                 sensor_values.aussen_temp,
                 features.raum_abweichung,
                 sensor_values.vorlauf_ist,
             )
 
-            # Sanity-Band: Vorhersagen außerhalb des Bands um die
-            # Heizkurve sind Modellfehler (z. B. Extrapolation auf
-            # Feature-Kombinationen, die das Training nicht gesehen
-            # hat) und werden durch den Fallback ersetzt.
+            # Sanity band: predictions outside the band around the
+            # heating curve are model errors (e. g. extrapolation to
+            # feature combinations the training has not seen) and
+            # are replaced by the fallback.
             band = self.sanity_band
             if fallback_vorlauf - band <= raw_prediction <= fallback_vorlauf + band:
                 vorlauf_soll = raw_prediction
             else:
                 _LOGGER.warning(
-                    "Model liefert unrealistischen Wert %.1f°C (Heizkurve: %.1f°C, Band ±%.1fK), "
-                    "verwende Fallback-Heizkurve",
+                    "Model returns unrealistic value %.1f°C (heating curve: %.1f°C, band ±%.1fK), "
+                    "using fallback heating curve",
                     raw_prediction,
                     fallback_vorlauf,
                     band,
@@ -604,13 +603,13 @@ class FlowController:
                 vorlauf_soll = fallback_vorlauf
 
         except Exception as e:
-            _LOGGER.error("Fehler bei Model-Prediction: %s, verwende Fallback-Heizkurve", e)
+            _LOGGER.error("Error in model prediction: %s, using fallback heating curve", e)
             vorlauf_soll = fallback_vorlauf
 
-        # Begrenzung auf konfigurierten Bereich
+        # Limit to the configured range
         vorlauf_soll = max(self.min_vorlauf, min(self.max_vorlauf, vorlauf_soll))
 
-        # Speichere Features für zeitversetztes Lernen (in 4h)
+        # Store features for time-delayed learning (in 4h)
         erfahrung = Erfahrung(
             timestamp=datetime.now(),
             features=features,
@@ -622,11 +621,11 @@ class FlowController:
         )
         self.erfahrungs_liste.append(erfahrung)
 
-        # Lerne aus Features die 4h alt sind (Reward-basiertes Lernen)
-        self.lerne_aus_features(sensor_values.raum_ist)
+        # Learn from features that are 4h old (reward-based learning)
+        self.learn_from_features(sensor_values.raum_ist)
 
         _LOGGER.info(
-            "Vorlauf-Soll berechnet: %.1f°C (Außen: %.1f°C, Raum: %.1f/%.1f°C, Vorlauf-Ist: %.1f°C)",
+            "Vorlauf-Soll calculated: %.1f°C (outdoor: %.1f°C, room: %.1f/%.1f°C, Vorlauf-Ist: %.1f°C)",
             vorlauf_soll,
             sensor_values.aussen_temp,
             sensor_values.raum_ist,
@@ -635,22 +634,22 @@ class FlowController:
         )
 
         _LOGGER.info(
-            "berechne_vorlauf_soll() min: %.1f°C, max: %.1f°C",
+            "calculate_vorlauf_soll() min: %.1f°C, max: %.1f°C",
             self.min_vorlauf,
             self.max_vorlauf,
         )  # noqa: HASS_LOGGER_CAPITAL
 
         return VorlaufSollAndFeatures(vorlauf=vorlauf_soll, features=features)
 
-    def setze_gelieferten_vorlauf(self, vorlauf_soll_geliefert: float) -> None:
-        """Aktualisiert die jüngste Erfahrung auf den real gelieferten Wert.
+    def set_delivered_vorlauf(self, vorlauf_soll_geliefert: float) -> None:
+        """Updates the most recent experience to the actually delivered value.
 
-        klemme_vorlauf_soll() und begrenze_schrittweite() greifen erst nach
-        berechne_vorlauf_soll() ein. Damit die 4h-Reward-Bewertung dem
-        tatsächlich gelieferten Wert zugeschrieben wird (und nicht der
-        ungeklammerten Vorhersage), muss der Anker der Erfahrung auf den
-        Lieferwert korrigiert werden — sonst lernt das Modell am falschen
-        Anker und der Begrenzungs-Bias kommt über den Reward zurück.
+        clamp_vorlauf_soll() and limit_schrittweite() only take effect after
+        calculate_vorlauf_soll(). So that the 4h reward evaluation is
+        attributed to the actually delivered value (and not the unclamped
+        prediction), the anchor of the experience must be corrected to the
+        delivered value — otherwise the model learns at the wrong anchor
+        and the clamping bias comes back via the reward.
         """
 
         if not self.erfahrungs_liste:
@@ -662,15 +661,15 @@ class FlowController:
 
         if erfahrung.vorlauf_soll != vorlauf_soll_geliefert:
             _LOGGER.info(
-                "Erfahrungs-Anker an Lieferwert angepasst: %.1f°C -> %.1f°C",
+                "Experience anchor adjusted to delivered value: %.1f°C -> %.1f°C",
                 erfahrung.vorlauf_soll,
                 vorlauf_soll_geliefert,
             )
             erfahrung.vorlauf_soll = vorlauf_soll_geliefert
 
     def get_model_statistics(self) -> ModelStats:
-        """Gibt Model-Statistiken zurück."""
-        # Kumulativer Zähler (die Liste verwirft gelernte Einträge beim Cleanup)
+        """Returns model statistics."""
+        # Cumulative counter (the list discards learned entries on cleanup)
         wartend = sum(1 for e in self.erfahrungs_liste if not e.gelernt)
 
         return ModelStats(

@@ -76,19 +76,19 @@ async def async_setup_entry(
     async_add_entities([number], True)
 
 
-def klemme_vorlauf_soll(
+def clamp_vorlauf_soll(
     vorlauf: float,
     sensor_values: SensorValues,
     hysterese: float,
     max_vorlauf: float,
 ) -> float:
-    """Klemme den Vorhersage-Wert auf die HPSU-Schaltregel.
+    """Clamp the prediction value to the HPSU switching rule.
 
-    Die HPSU startet erst, wenn VorlaufSoll >= Tv + 3 K, und stoppt,
-    wenn Tv >= VorlaufSoll + 3 K. Bei Heizbedarf (raum_ist < raum_soll)
-    landet eine Vorhersage nahe der aktuellen Tv in der toten Zone und
-    die WP zykelt bzw. startet nie — daher klemmen wir auf mindestens
-    Tv + Hysterese + Margin.
+    The HPSU only starts when VorlaufSoll >= Tv + 3 K, and stops
+    when Tv >= VorlaufSoll + 3 K. With heating demand (raum_ist < raum_soll)
+    a prediction near the current Tv lands in the dead zone and
+    the heat pump cycles or never starts — therefore we clamp to at least
+    Tv + Hysteresis + Margin.
     """
     if sensor_values.raum_ist >= sensor_values.raum_soll:
         return vorlauf
@@ -99,16 +99,16 @@ def klemme_vorlauf_soll(
     return vorlauf
 
 
-def begrenze_schrittweite(
+def limit_schrittweite(
     neu: float,
     previous: float | None,
     max_schrittweite: float,
 ) -> float:
-    """Begrenze die Änderung des Sollwerts pro Update-Zyklus.
+    """Limit the change of the setpoint per update cycle.
 
-    Ein falsches Lern-Ereignis darf den Sollwert nicht um viele Kelvin
-    springen lassen — sonst läuft die HPSU (3K-Schaltregel) stundenlang
-    ununterbrochen. Kein Limit, wenn previous None ist (erster Lauf) oder
+    A wrong learning event must not let the setpoint jump by many Kelvin
+    — otherwise the HPSU (3K switching rule) runs uninterrupted for hours.
+    No limit when previous is None (first run) or
     max_schrittweite <= 0.
     """
     if previous is None or max_schrittweite <= 0:
@@ -150,7 +150,7 @@ class FlowControlNumber(NumberEntity, RestoreEntity):
         self._is_heating_entity = config.get(CONF_IS_HEATING_ENTITY)
         self._thermische_leistung_sensor = config.get(CONF_THERMISCHE_LEISTUNG_SENSOR)
 
-        # Konfiguration
+        # Configuration
         self._update_interval_minutes = config.get(
             CONF_UPDATE_INTERVAL, DEFAULT_UPDATE_INTERVAL
         )
@@ -187,10 +187,10 @@ class FlowControlNumber(NumberEntity, RestoreEntity):
 
         self._tasks: set[asyncio.Task[None]] = set()
 
-        # Serialisiert Update-Zyklen: überlappende Läufe (Intervall-Timer,
-        # Sensor-Event, erster Start) würden den Controller parallel
-        # mutieren (river-Model, erfahrungs_liste, HistoryBuffer) und
-        # während des Pickle-Save korrupte Daten erzeugen.
+        # Serializes update cycles: overlapping runs (interval timer,
+        # sensor event, first start) would mutate the controller in
+        # parallel (river model, erfahrungs_liste, HistoryBuffer) and
+        # produce corrupt data during the pickle save.
         self._update_lock = asyncio.Lock()
 
     @property
@@ -240,10 +240,10 @@ class FlowControlNumber(NumberEntity, RestoreEntity):
             self._async_sensor_state_changed,
         )
 
-        # Shutdown-Save: async_will_remove_from_hass feuert bei HA-Shutdown
-        # NICHT (HA entlädt beim Stoppen keine Entities). Das STOP-Event
-        # feuert früh genug im Herunterfahren, damit der Executor-Save noch
-        # anläuft — ungelernte Erfahrungen überleben so jeden Restart.
+        # Shutdown-Save: async_will_remove_from_hass does NOT fire
+        # on HA shutdown (HA does not unload entities when stopping). The STOP event
+        # fires early enough during shutdown for the executor save to still
+        # get going — unlearned experiences thus survive every restart.
         self._ha_stop_unsub = self.hass.bus.async_listen_once(
             EVENT_HOMEASSISTANT_STOP, self._async_on_ha_stop
         )
@@ -256,7 +256,7 @@ class FlowControlNumber(NumberEntity, RestoreEntity):
                 self._async_heating_state_changed,
             )
 
-        # Sofortiges erstes Update nach 5 Sekunden
+        # Immediate first update after 5 seconds
         self._create_task(self._delayed_first_update())
 
     async def async_set_native_value(self, value: float) -> None:
@@ -266,7 +266,7 @@ class FlowControlNumber(NumberEntity, RestoreEntity):
 
         self._attr_native_value = value
 
-        # Bei manueller Änderung auch direkt senden (unabhängig vom Switch)
+        # Send directly on manual change too (independent of the switch)
         await self._async_set_vorlauf_soll(value)
         self.async_write_ha_state()
 
@@ -274,15 +274,15 @@ class FlowControlNumber(NumberEntity, RestoreEntity):
         """Run when entity will be removed from hass."""
         _LOGGER.info("async_will_remove_from_hass())")
 
-        # Snapshot schreiben, bevor die Entity weg ist: gelernte Erfahrungen
-        # (auch ungelernte aus dem letzten Zyklus) dürfen bei Shutdown/
-        # Restart nicht verloren gehen.
+        # Write a snapshot before the entity is gone: learned experiences
+        # (including unlearned ones from the last cycle) must not be lost
+        # on shutdown/restart.
         if self._controller is not None and self._config_entry is not None:
             try:
                 await async_save_controller(self.hass, self._config_entry, self._controller)
             except Exception:  # noqa: BLE001
                 _LOGGER.warning(
-                    "Model-Snapshot bei Entfernen nicht gespeichert", exc_info=True
+                    "Model snapshot not saved on removal", exc_info=True
                 )
 
         if self._update_interval_listener:
@@ -317,14 +317,14 @@ class FlowControlNumber(NumberEntity, RestoreEntity):
     # Private methods
 
     async def _async_on_ha_stop(self, _event) -> None:
-        """Speichert den Model-Snapshot, bevor HA heruntergefahren wird."""
+        """Saves the model snapshot before HA shuts down."""
 
-        _LOGGER.info("HA stoppt: Model-Snapshot wird gespeichert")
+        _LOGGER.info("HA stopping: saving model snapshot")
         try:
             await async_save_controller(self.hass, self._config_entry, self._controller)
         except Exception:
             _LOGGER.warning(
-                "Model-Snapshot bei HA-Stop nicht gespeichert", exc_info=True
+                "Model snapshot not saved on HA stop", exc_info=True
             )
 
     async def _delayed_first_update(self):
@@ -338,19 +338,19 @@ class FlowControlNumber(NumberEntity, RestoreEntity):
 
         _LOGGER.debug("_async_sensor_state_changed()")
 
-        # Ignoriere unavailable/unknown states
+        # Ignore unavailable/unknown states
         new_state = event.data.get("new_state")
         if new_state is None or new_state.state in ("unavailable", "unknown"):
             return
 
-        # Wenn Number noch unavailable ist, prüfe ob jetzt alle verfügbar sind
+        # If the Number is still unavailable, check whether all sensors are now available
         if not self._available:
             self._create_task(self._check_and_update_if_ready())
             return
 
-        # raum_soll-Änderung: sofortiges (entprelltes) Update, damit die
-        # WP nicht bis zum nächsten Stundentermin auf die alte Einstellung
-        # regelt. Nur bei echter Wertänderung, nicht bei Attribut-Refresh.
+        # raum_soll change: immediate (debounced) update so that the
+        # heat pump does not keep regulating to the old setting until the
+        # next hourly appointment. Only on a real value change, not on an attribute refresh.
         if (
             new_state.entity_id == self._raum_soll_sensor
             and event.data.get("old_state") is not None
@@ -360,7 +360,7 @@ class FlowControlNumber(NumberEntity, RestoreEntity):
 
     @callback
     def _schedule_raum_soll_update(self) -> None:
-        """Plane ein entprelltes Update nach raum_soll-Änderung."""
+        """Schedule a debounced update after a raum_soll change."""
         if self._raum_soll_debounce_unsub:
             self._raum_soll_debounce_unsub()
             self._raum_soll_debounce_unsub = None
@@ -368,13 +368,13 @@ class FlowControlNumber(NumberEntity, RestoreEntity):
         async def _debounced_update(_now) -> None:
             self._raum_soll_debounce_unsub = None
             _LOGGER.info(
-                "raum_soll-Änderung: sofortiges Update (entprellt %ds)",
+                "raum_soll change: immediate update (debounced %ds)",
                 RAUM_SOLL_DEBOUNCE_SECONDS,
             )
-            # Erfahrung dieses Sofort-Zyklus lernt gedämpft: eine Sollwert-
-            # Änderung enthält dieselbe Information wie eine einzelne
-            # Verstellung, mehrfache Zyklen dürfen das Modell nicht
-            # N-fach verstärken.
+            # The experience of this immediate cycle learns damped: a setpoint
+            # change contains the same information as a single
+            # adjustment; multiple cycles must not amplify the model
+            # N times over.
             await self._async_update_vorlauf_soll(durch_sollweechsel=True)
 
         self._raum_soll_debounce_unsub = async_call_later(
@@ -398,7 +398,7 @@ class FlowControlNumber(NumberEntity, RestoreEntity):
         """
         if not self._is_heating_entity:
             _LOGGER.warning("Entity is_heating_entity not configured!")
-            return True  # Kein Sensor konfiguriert = immer lernen
+            return True  # No sensor configured = always learn
 
         is_heating_state = self.hass.states.get(self._is_heating_entity)
         if is_heating_state is None:
@@ -441,7 +441,7 @@ class FlowControlNumber(NumberEntity, RestoreEntity):
                 self._format_sensor_as_float(vorlauf_ist_state_or_none),
             )
 
-            # Prüfe auf unavailable/unknown
+            # Check for unavailable/unknown
             sensors = [
                 (self._aussen_temp_sensor, aussen_temp_state_or_none),
                 (self._raum_ist_sensor, raum_ist_state_or_none),
@@ -464,7 +464,7 @@ class FlowControlNumber(NumberEntity, RestoreEntity):
             vorlauf_ist = float(cast(State, vorlauf_ist_state_or_none).state)
             raum_soll_state = cast(State, raum_soll_state_or_none)
 
-            # Raum-Soll kann von Climate-Entity oder Input-Number kommen
+            # raum_soll may come from a climate entity or an input number
             if raum_soll_state.domain == "climate":
                 raum_soll = float(raum_soll_state.attributes.get("temperature", 21.0))
             else:
@@ -472,7 +472,7 @@ class FlowControlNumber(NumberEntity, RestoreEntity):
                 raum_soll_value = float(raum_soll.state)
                 raum_soll = float(raum_soll_value)
 
-            # Thermische Leistung (optional)
+            # Thermal power (optional)
             thermische_leistung = None
             if self._thermische_leistung_sensor:
                 thermische_leistung_state = self.hass.states.get(self._thermische_leistung_sensor)
@@ -500,8 +500,8 @@ class FlowControlNumber(NumberEntity, RestoreEntity):
     ) -> None:
         """Update the Vorlauf-Soll value."""
 
-        # Überspringe parallele Aufrufe: ein laufender Update-Zyklus
-        # soll nicht von Timer/Sensor-Event doppelt gestartet werden.
+        # Skip parallel calls: a running update cycle
+        # must not be started twice by the timer/sensor event.
         if self._update_lock.locked():
             _LOGGER.debug("Update already in progress - skipping")
             return
@@ -543,45 +543,45 @@ class FlowControlNumber(NumberEntity, RestoreEntity):
                 self.async_write_ha_state()
                 return
 
-            # Berechne neuen Vorlauf-Soll. Erfahrungen aus raum_soll-
-            # getriggerten Sofort-Zyklen lernen gedämpft (Faktor < 1),
-            # Stundencyklen mit vollem Gewicht.
+            # Calculate the new Vorlauf-Soll. Experiences from raum_soll-
+            # triggered immediate cycles learn damped (factor < 1),
+            # hourly cycles with full weight.
             gewicht_faktor = (
                 RAUM_SOLL_TRIGGER_GEWICHT if durch_sollweechsel else 1.0
             )
             vorlauf_soll_and_features: VorlaufSollAndFeatures = await self.hass.async_add_executor_job(
-                self._controller.berechne_vorlauf_soll,
+                self._controller.calculate_vorlauf_soll,
                 sensor_values,
                 gewicht_faktor,
             )
 
-            # 1. Schrittweitenlimit: bändigt nur den MODELLwert (Schutz vor
-            # Modell-Sprüngen, siehe begrenze_schrittweite). Läuft VOR der
-            # Totzonen-Klemme, damit die deterministische WP-Startregel
-            # unten nicht gedrosselt wird — sonst startet die WP bei
-            # Heizbedarf erst Stunden später.
+            # 1. Step limit: only tames the MODEL value (protection against
+            # model jumps, see limit_schrittweite). Runs BEFORE the
+            # dead-zone clamp so that the deterministic heat pump start rule
+            # below is not throttled — otherwise the heat pump would
+            # only start hours later with heating demand.
             previous_value = (
                 float(self._attr_native_value)
                 if self._attr_native_value is not None
                 else None
             )
-            vorlauf_soll_effektiv = begrenze_schrittweite(
+            vorlauf_soll_effektiv = limit_schrittweite(
                 vorlauf_soll_and_features.vorlauf, previous_value, self._max_schrittweite
             )
             if vorlauf_soll_effektiv != vorlauf_soll_and_features.vorlauf:
                 _LOGGER.warning(
-                    "Sollwert-Sprung begrenzt: %.1f°C -> %.1f°C (max %.1fK pro Update)",
+                    "Vorlauf-Soll jump limited: %.1f°C -> %.1f°C (max %.1fK per update)",
                     vorlauf_soll_and_features.vorlauf,
                     vorlauf_soll_effektiv,
                     self._max_schrittweite,
                 )
 
-            # 2. Totzonen-Klemme: siehe klemme_vorlauf_soll(). Eine
-            # Vorhersage in der toten Zone (< Tv+Hysterese) wird bei
-            # Heizbedarf auf die WP-Startschwelle angehoben — ungedrosselt,
-            # damit die WP sofort starten kann.
+            # 2. Dead-zone clamp: see clamp_vorlauf_soll(). A
+            # prediction in the dead zone (< Tv+Hysteresis) is raised to
+            # the heat pump start threshold with heating demand — unthrottled,
+            # so the heat pump can start immediately.
             vorlauf_soll_geliefert = vorlauf_soll_effektiv
-            vorlauf_soll_effektiv = klemme_vorlauf_soll(
+            vorlauf_soll_effektiv = clamp_vorlauf_soll(
                 vorlauf_soll_effektiv,
                 sensor_values,
                 self._hysterese,
@@ -589,16 +589,16 @@ class FlowControlNumber(NumberEntity, RestoreEntity):
             )
             if vorlauf_soll_effektiv != vorlauf_soll_geliefert:
                 _LOGGER.info(
-                    "Heizbedarf, Vorhersage %.1f°C in toter Zone (< Tv+%.1fK): geklemmt auf %.1f°C",
+                    "Heating demand, prediction %.1f°C in dead zone (< Tv+%.1fK): clamped to %.1f°C",
                     vorlauf_soll_geliefert,
                     self._hysterese,
                     vorlauf_soll_effektiv,
                 )
 
-            # Reward-Zuschreibung: Der Anker der frisch erstellten Erfahrung
-            # muss dem Wert entsprechen, der wirklich an die WP geht
-            # (nach Clamp und Schrittweitenlimit).
-            self._controller.setze_gelieferten_vorlauf(vorlauf_soll_effektiv)
+            # Reward attribution: The anchor of the freshly created experience
+            # must match the value that is really sent to the heat pump
+            # (after clamp and step limit).
+            self._controller.set_delivered_vorlauf(vorlauf_soll_effektiv)
 
             # Track successful prediction time
             self._last_prediction_time = dt_util.now()
@@ -614,7 +614,7 @@ class FlowControlNumber(NumberEntity, RestoreEntity):
             # Update attributes
             model_statistics = self._controller.get_model_statistics()
 
-            # Prüfe is_heating (pumpenagnostisches Gate, kein HPSU-Betriebsart-Sensor)
+            # Check is_heating (pump-agnostic gate, no HPSU operating mode sensor)
             current_is_heating = None
             if self._is_heating_entity:
                 is_heating_state = self.hass.states.get(self._is_heating_entity)
@@ -636,17 +636,17 @@ class FlowControlNumber(NumberEntity, RestoreEntity):
                 ATTR_NEXT_UPDATE: self._next_update.isoformat(),
                 "history_size": model_statistics.history_size,
                 "is_heating": current_is_heating,
-                # Kumulativer Zähler aus dem Controller (nicht den eigenen
-                # Attributwert lesen — der ist beim Schreiben veraltet)
+                # Cumulative counter from the controller (do not read the
+                # attribute value of our own — it is outdated when written)
                 "erfahrungen_gelernt": model_statistics.erfahrungen_gelernt
             }
 
-            # Prüfe ob Switch aktiv ist, dann sende an Wärmepumpe
-            # Der Switch hat unique_id = {DOMAIN}_{entry_id}_aktiv
+            # Check whether the switch is active, then send to the heat pump
+            # The switch has unique_id = {DOMAIN}_{entry_id}_aktiv
             switch_state = None
             switch_unique_id = f"{DOMAIN}_{self._config_entry.entry_id}_aktiv"
 
-            # Suche Switch über unique_id in der Entity Registry
+            # Find the switch via unique_id in the entity registry
             entity_registry = er.async_get(self.hass)
 
             for entity_id in entity_registry.entities:
@@ -655,7 +655,7 @@ class FlowControlNumber(NumberEntity, RestoreEntity):
                     switch_state = self.hass.states.get(entity_id)
                     break
 
-            # Fallback: Versuche direkt über konstruierte Entity-ID
+            # Fallback: try directly via the constructed entity ID
             if not switch_state:
                 switch_entity_id = f"switch.{DOMAIN}_aktiv"
                 switch_state = self.hass.states.get(switch_entity_id)
@@ -676,14 +676,14 @@ class FlowControlNumber(NumberEntity, RestoreEntity):
             self.async_write_ha_state()
 
             _LOGGER.info(
-                "Vorlauf-Soll updated: %.1f°C (Außen: %.1f°C, Raum: %.1f/%.1f°C)",
+                "Vorlauf-Soll updated: %.1f°C (Outdoor: %.1f°C, Room: %.1f/%.1f°C)",
                 vorlauf_soll_effektiv,
                 sensor_values.aussen_temp,
                 sensor_values.raum_ist,
                 sensor_values.raum_soll,
             )
 
-            # Nach Berechnung speichern (Feature-Lernen passiert intern im Controller)
+            # Save after calculation (feature learning happens internally in the controller)
             await async_save_controller(self.hass, self._config_entry, self._controller)
 
         except Exception:
@@ -774,7 +774,7 @@ class FlowControlNumber(NumberEntity, RestoreEntity):
             _LOGGER.error("Error setting Vorlauf-Soll: %s", e)
 
     def _format_sensor_as_float(self, state: State | None) -> str:
-        """Konvertiert einen HA State in einen Float-String (2 Stellen) oder 'None'."""
+        """Converts an HA state into a float string (2 digits) or 'None'."""
 
         if state is None or state.state in ("unknown", "unavailable"):
             return "None"

@@ -113,7 +113,7 @@ def get_config_schema(defaults=None):
                     max=240,
                     step=1,
                     mode=NumberSelectorMode.BOX,
-                    unit_of_measurement="Minuten",
+                    unit_of_measurement="minutes",
                 )
             ),
             vol.Optional(
@@ -174,7 +174,7 @@ class FlowControlConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         if user_input is not None:
             try:
                 return self.async_create_entry(
-                    title="Wärmepumpen ML Regelung",
+                    title="Heat Pump ML Control",
                     data=user_input,
                 )
             except Exception as e:  # noqa: BLE001

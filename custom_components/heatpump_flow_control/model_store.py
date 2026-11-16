@@ -1,9 +1,9 @@
-"""JSON-basierter Snapshot-Speicher für den FlowController.
+"""JSON-based snapshot store for the FlowController.
 
-Statt river-Objekte zu picklen (instabil über river-Versionen, da river
-C-Extension-Objekte wie VectorDict speichert) wird nur der numerische
-Zustand als JSON gespeichert und beim Laden neu aufgebaut. Dadurch bleibt
-die Lern-DB über river-Upgrades hinweg erhalten.
+Instead of pickling river objects (unstable across river versions, since river
+pickles C extension objects like VectorDict), only the numerical state is
+stored as JSON and rebuilt when loading. This way the learning DB survives
+river upgrades.
 """
 
 import json
@@ -33,7 +33,7 @@ FEATURE_KEYS = list(Features.__dataclass_fields__)
 
 
 def _temp_als_json(entry: DateTimeTemperatur) -> dict[str, Any]:
-    """Konvertiert DateTimeTemperatur in ein JSON-Dict."""
+    """Converts DateTimeTemperatur into a JSON dict."""
 
     return {
         "timestamp": entry.timestamp.isoformat(),
@@ -42,7 +42,7 @@ def _temp_als_json(entry: DateTimeTemperatur) -> dict[str, Any]:
 
 
 def _temp_aus_json(data: dict[str, Any]) -> DateTimeTemperatur:
-    """Konvertiert ein JSON-Dict in DateTimeTemperatur."""
+    """Converts a JSON dict into DateTimeTemperatur."""
 
     return DateTimeTemperatur(
         timestamp=datetime.fromisoformat(data["timestamp"]),
@@ -51,7 +51,7 @@ def _temp_aus_json(data: dict[str, Any]) -> DateTimeTemperatur:
 
 
 def _erfahrung_als_json(erfahrung: Erfahrung) -> dict[str, Any]:
-    """Konvertiert Erfahrung in ein JSON-Dict."""
+    """Converts Erfahrung into a JSON dict."""
 
     return {
         "timestamp": erfahrung.timestamp.isoformat(),
@@ -65,7 +65,7 @@ def _erfahrung_als_json(erfahrung: Erfahrung) -> dict[str, Any]:
 
 
 def _erfahrung_aus_json(data: dict[str, Any]) -> Erfahrung:
-    """Konvertiert ein JSON-Dict in Erfahrung."""
+    """Converts a JSON dict into Erfahrung."""
 
     return Erfahrung(
         timestamp=datetime.fromisoformat(data["timestamp"]),
@@ -74,13 +74,13 @@ def _erfahrung_aus_json(data: dict[str, Any]) -> Erfahrung:
         raum_ist_vorher=float(data["raum_ist_vorher"]),
         raum_soll=float(data["raum_soll"]),
         gelernt=bool(data["gelernt"]),
-        # Snapshots vor dem Faktor-Feld haben es nicht: Standard 1.0
+        # Snapshots before the factor field do not have it: default 1.0
         gewicht_faktor=float(data.get("gewicht_faktor", 1.0)),
     )
 
 
 def _metric_aus_snapshot(metric_data: dict[str, Any]) -> "metrics.MAE":
-    """Baut die MAE-Metrik aus dem Snapshot."""
+    """Builds the MAE metric from the snapshot."""
 
     metric = metrics.MAE()
     metric._mean = stats.Mean()
@@ -90,7 +90,7 @@ def _metric_aus_snapshot(metric_data: dict[str, Any]) -> "metrics.MAE":
 
 
 def controller_to_snapshot(controller: FlowController) -> dict[str, Any]:
-    """Erzeugt einen JSON-fähigen Snapshot des gelernten Zustands."""
+    """Creates a JSON-serializable snapshot of the learned state."""
 
     scaler = controller.model["StandardScaler"]
     reg = controller.model["LinearRegression"]
@@ -136,16 +136,16 @@ def snapshot_to_controller(
     max_thermische_leistung: float = 6.0,
     sanity_band: float = 5.0,
 ) -> FlowController:
-    """Baut einen FlowController aus einem Snapshot neu auf.
+    """Rebuilds a FlowController from a snapshot.
 
-    Die Konfigurationsparameter stammen aus der aktuellen HA-Konfiguration,
-    nur der gelernte Zustand wird wiederhergestellt. Der Optimizer wird mit
-    der aktuellen learning_rate neu gebaut (lr-Änderungen werden so wirksam).
+    The configuration parameters come from the current HA configuration,
+    only the learned state is restored. The optimizer is rebuilt with
+    the current learning_rate (this way lr changes take effect).
     """
 
     schema_version = snapshot.get("schema_version")
     if schema_version != MODEL_SCHEMA_VERSION:
-        raise ValueError(f"Unbekannte Schema-Version: {schema_version!r}")
+        raise ValueError(f"Unknown schema version: {schema_version!r}")
 
     scaler_data = snapshot["scaler"]
     model_data = snapshot["model"]
@@ -193,7 +193,7 @@ def snapshot_to_controller(
 
 
 def lade_snapshot(pfad: Path) -> dict[str, Any] | None:
-    """Lädt einen Snapshot von der Platte. Gibt None zurück, wenn nicht vorhanden."""
+    """Loads a snapshot from disk. Returns None if not present."""
 
     if not pfad.exists():
         return None
@@ -203,7 +203,7 @@ def lade_snapshot(pfad: Path) -> dict[str, Any] | None:
 
 
 def speichere_snapshot(snapshot: dict[str, Any], pfad: Path) -> None:
-    """Speichert einen Snapshot atomar als JSON (tmp-Datei + replace)."""
+    """Stores a snapshot atomically as JSON (tmp file + replace)."""
 
     tmp_pfad = pfad.with_suffix(pfad.suffix + ".tmp")
     with tmp_pfad.open("w", encoding="utf-8") as f:

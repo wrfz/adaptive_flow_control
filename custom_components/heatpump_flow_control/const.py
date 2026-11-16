@@ -2,7 +2,7 @@
 
 DOMAIN = "heatpump_flow_control"
 
-# Konfiguration
+# Configuration
 CONF_AUSSEN_TEMP_SENSOR = "aussen_temp_sensor"
 CONF_RAUM_IST_SENSOR = "raum_ist_sensor"
 CONF_RAUM_SOLL_SENSOR = "raum_soll_sensor"
@@ -25,40 +25,40 @@ DEFAULT_MIN_VORLAUF_LO = 25.0
 DEFAULT_MIN_VORLAUF_HI = 32.0
 DEFAULT_MAX_VORLAUF_LO = 35.0
 DEFAULT_MAX_VORLAUF_HI = 55.0
-DEFAULT_UPDATE_INTERVAL = 60  # Minuten
+DEFAULT_UPDATE_INTERVAL = 60  # minutes
 DEFAULT_LEARNING_RATE = 0.03
 DEFAULT_HYSTERESE = 3.0
-# Sicherheitsabstand zusätzlich zur Hysterese, damit der Wert nach dem
-# Runden von Tv/Soll nicht unter der Schaltregel landet.
+# Safety margin added to the hysteresis so that the rounded Tv/soll value
+# does not fall below the switching rule.
 HYSTERESE_MARGIN = 0.5
-# Max. Änderung des Sollwerts pro Update-Zyklus (K). Verhindert, dass das
-# Modell mit einem falschen Lern-Ereignis den Sollwert um viele Kelvin
-# springen lässt und die WP dann stundenlang Vollgas läuft.
+# Max. change of the target value per update cycle (K). Prevents the model
+# from letting the target value jump by many kelvin due to one wrong
+# learning event, making the heat pump run at full power for hours.
 DEFAULT_MAX_SCHRITTWEITE = 1.0
-# Toleranzband um die Heizkurve-Fallback (K). Vorhersagen außerhalb des
-# Bands werden als Modellfehler behandelt und durch den Fallback ersetzt.
-# Nicht zu eng: Das Modell darf legitim von der Heizkurve abweichen,
-# sobald es echte Daten gelernt hat (Testlernen zeigt Abweichungen ~5.5K
-# bei kalten Außentemperaturen). Der Wildwuchs-Sprung 28→39 im Nacht-
-# Extrapolationsfall (2026-11-16) lag bei ~14K und fällt trotzdem auf.
+# Tolerance band around the heating-curve fallback (K). Predictions outside
+# the band are treated as model errors and replaced by the fallback.
+# Not too tight: the model may legitimately deviate from the heating curve
+# once it has learned real data (test learning shows deviations of ~5.5K
+# at cold outdoor temperatures). The erratic jump 28→39 in the night
+# extrapolation case (2026-11-16) was ~14K and still falls within it.
 DEFAULT_SANITY_BAND = 8.0
 DEFAULT_MIN_THERMISCHE_LEISTUNG = 0.6  # kW
 DEFAULT_MAX_THERMISCHE_LEISTUNG = 6.0  # kW
 
-# Entprellzeit für das sofortige Update nach raum_soll-Änderung (s).
-# Slider-Ziehen und Zeitplan-Änderungen feuern sonst eine Kette von
-# State-Changes; ohne Wartezeit würde jeder davon einen vollen Regel-
-# Zyklus mit neuer Erfahrung auslösen.
+# Debounce time for the immediate update after a raum_soll change (s).
+# Otherwise, slider drags and schedule changes fire a chain of state
+# changes; without a wait, each of them would trigger a full control
+# cycle with a new experience.
 RAUM_SOLL_DEBOUNCE_SECONDS = 60
 
-# Lerngewicht-Faktor für Erfahrungen aus raum_soll-getriggerten Zyklen.
-# Eine Sollwert-Änderung enthält dieselbe Information wie eine einzelne
-# Verstellung auf den Mittelwert — mehrfache Zyklen innerhalb kurzer Zeit
-# würden sonst N-fach verstärkt ins Modell ziehen (jede Erfahrung ist ein
-# voller Lern-Schritt). Faktor < 1 dämpft das; Stundencyklen bleiben bei 1.0.
+# Learning-weight factor for experiences from raum_soll-triggered cycles.
+# A target-value change carries the same information as a single
+# adjustment to the mean — otherwise multiple cycles within a short time
+# would pull into the model amplified N-fold (each experience is a full
+# learning step). A factor < 1 damps this; hourly cycles stay at 1.0.
 RAUM_SOLL_TRIGGER_GEWICHT = 0.3
 
-# Attribute
+# Attributes
 ATTR_AUSSEN_TEMP = "aussen_temp"
 ATTR_RAUM_IST = "raum_ist"
 ATTR_RAUM_SOLL = "raum_soll"

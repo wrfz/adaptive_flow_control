@@ -81,10 +81,10 @@ Das Modell sieht pro Zyklus:
 
 | Stufe | Was | Schutz gegen |
 |---|---|---|
-| 1. **Sanity-Band** (`sanity_band`, Standard 8 K) | Liegt die Vorhersage mehr als ±8 K neben der Heizkurve, gilt sie als Modellfehler (z. B. Extrapolation auf nie gesehene Feature-Kombinationen) und wird durch die Heizkurve ersetzt (Log: `Model liefert unrealistischen Wert … verwende Fallback-Heizkurve`). | Wildwuchs-Sprünge des Modells |
+| 1. **Sanity-Band** (`sanity_band`, Standard 8 K) | Liegt die Vorhersage mehr als ±8 K neben der Heizkurve, gilt sie als Modellfehler (z. B. Extrapolation auf nie gesehene Feature-Kombinationen) und wird durch die Heizkurve ersetzt (Log: `Model returns unrealistic value … using fallback heating curve`). | Wildwuchs-Sprünge des Modells |
 | 2. **Bereichsgrenzen** | Klemmung auf `[min_vorlauf, max_vorlauf]`. | physikalisch unsinnige Werte |
-| 3. **Schrittweitenlimit** (`max_schrittweite`, Standard 1 K) | Max. Änderung des **Modellwerts** pro Zyklus (Log: `Sollwert-Sprung begrenzt …`). Im Normalbetrieb (stündliche Änderungen < 1 K) unsichtbar; es fängt nur Sprünge ab und ist ein permanentes Sicherheitsgeländer, kein temporärer Patch. | falsches Lern-Ereignis lässt die WP stundenlang Vollgas laufen |
-| 4. **Totzonen-Klemme** (`hysterese`, Standard 3 K) | Viele WP-Regler (z. B. HPSU) starten erst, wenn `VorlaufSoll ≥ Tv + 3 K`. Bei Heizbedarf (`raum_ist < raum_soll`) wird eine Vorhersage in dieser toten Zone auf mindestens `Tv + 3,5 K` geklemmt (Log: `Heizbedarf, Vorhersage … in toter Zone … geklemmt`). Die Klemme läuft **nach** dem Schrittweitenlimit und wird deshalb **nicht gedrosselt** — die deterministische Startregel des Reglers wirkt sofort, während Modell-Sprünge weiter begrenzt bleiben. | Kurzzyklen / Nichtstart / verzögerter Start nach Sollwert-Änderung |
+| 3. **Schrittweitenlimit** (`max_schrittweite`, Standard 1 K) | Max. Änderung des **Modellwerts** pro Zyklus (Log: `Vorlauf-Soll jump limited …`). Im Normalbetrieb (stündliche Änderungen < 1 K) unsichtbar; es fängt nur Sprünge ab und ist ein permanentes Sicherheitsgeländer, kein temporärer Patch. | falsches Lern-Ereignis lässt die WP stundenlang Vollgas laufen |
+| 4. **Totzonen-Klemme** (`hysterese`, Standard 3 K) | Viele WP-Regler (z. B. HPSU) starten erst, wenn `VorlaufSoll ≥ Tv + 3 K`. Bei Heizbedarf (`raum_ist < raum_soll`) wird eine Vorhersage in dieser toten Zone auf mindestens `Tv + 3,5 K` geklemmt (Log: `Heating demand, prediction … in dead zone … clamped`). Die Klemme läuft **nach** dem Schrittweitenlimit und wird deshalb **nicht gedrosselt** — die deterministische Startregel des Reglers wirkt sofort, während Modell-Sprünge weiter begrenzt bleiben. | Kurzzyklen / Nichtstart / verzögerter Start nach Sollwert-Änderung |
 
 Das Schrittweitenlimit wird **nie automatisch ausgeschaltet**. Wenn das Modell später so verlässlich lernt, dass schnellere Anpassung gewünscht ist: Option `max_schrittweite` erhöhen (z. B. 2 K) oder auf `0` setzen (= aus).
 
@@ -160,7 +160,7 @@ Zustand: Aussentemp 9.7 °C, Raum 23.0 °C, Raum-Soll 22.5 °C, Tv 30.5 °C, let
 2. Modell-Vorhersage: **31.9 °C** → innerhalb des Bands → übernommen.
 3. Bereichsgrenze [25; 40]: unverändert.
 4. Totzonen-Klemme: Raum ist warm genug (23.0 ≥ 22.5) → **kein** Heizbedarf → keine Klemme nötig.
-5. Schrittweitenlimit: 31.9 > 30.5 + 1.0 → **begrenzt auf 31.5 °C** (Log: `Sollwert-Sprung begrenzt: 31.9°C → 31.5°C (max 1.0K pro Update)`).
+5. Schrittweitenlimit: 31.9 > 30.5 + 1.0 → **begrenzt auf 31.5 °C** (Log: `Vorlauf-Soll jump limited: 31.9°C -> 31.5°C (max 1.0K per update)`).
 6. Geliefert: **31.5 °C** — und genau dieser Wert landet in der Erfahrung für das spätere Lernen.
 
 ### Beispiel 2: Totzonen-Klemme verhindert WP-Zykling und verzögerten Start
@@ -169,7 +169,7 @@ Zustand: Raum 21.8 °C, Soll 22.5 °C → Heizbedarf. Tv 30.1 °C. Modell sagt *
 
 - Die WP startet erst bei `Soll ≥ Tv + 3 K` = 33.1 K. Ein Soll von 28.0 °C läge in der Totzone: Die WP startet nie oder zykelt.
 - 1. Schrittweitenlimit: 28.0 < 30.5 − 1 → auf **29.5 °C** begrenzt (Modellschutz).
-- 2. Totzonen-Klemme: `min_soll = 30.1 + 3.0 + 0.5 = 33.6 °C` → geliefert wird **33.6 °C** (Log: `Heizbedarf, Vorhersage 29.5°C in toter Zone (< Tv+3.5K): geklemmt auf 33.6°C`) — **ungedrosselt**, die WP startet sofort.
+- 2. Totzonen-Klemme: `min_soll = 30.1 + 3.0 + 0.5 = 33.6 °C` → geliefert wird **33.6 °C** (Log: `Heating demand, prediction 29.5°C in dead zone (< Tv+3.5K): clamped to 33.6°C`) — **ungedrosselt**, die WP startet sofort.
 - Wäre die Klemme (wie früher) vor dem Schrittweitenlimit gelaufen, hätte sie den Sollwert auf 31.5 °C gestaucht und die WP erst nach 2–3 weiteren Zyklen gestartet.
 - Die Erfahrung speichert 33.6 °C (den gelieferten Wert), nicht die 28.0.
 
@@ -178,7 +178,7 @@ Zustand: Raum 21.8 °C, Soll 22.5 °C → Heizbedarf. Tv 30.1 °C. Modell sagt *
 Nachts bei −2 °C Aussentemperatur liefert das Modell **39.2 °C**, obwohl die Heizkurve ~26 °C sagt.
 
 - Band ±8 K → [18; 34]. 39.2 liegt außen → Modellfehler.
-- Geliefert wird die **Heizkurve (26 °C)** (Log: `Model liefert unrealistischen Wert 39.2°C (Heizkurve: 26.0°C, Band ±8.0K), verwende Fallback-Heizkurve`).
+- Geliefert wird die **Heizkurve (26 °C)** (Log: `Model returns unrealistic value 39.2°C (heating curve: 26.0°C, band ±8.0K), using fallback heating curve`).
 - Für das Lernen bleibt der Vorfall unschädlich: Auch hier trägt die Erfahrung den gelieferten Wert als Anker.
 
 ### Beispiel 4: Zeitversetztes Lernen
@@ -221,10 +221,10 @@ DEBUG-Logging für die Integration aktivieren: *Einstellungen → Geräte & Dien
 _async_update_vorlauf_soll() controler.enabled: 1, is_heating: 1
 _is_heating_mode: on, 1
 _async_get_sensor_values() → Reading sensors: aussen=9.7, raum_ist=23.0, …
-_erstelle_features()
-Model-Prediction: 31.90°C (Außen: 9.7°C, Raum-Abw: -0.48°C, Vorlauf-Ist: 30.5°C)
-Vorlauf-Soll berechnet: 31.5°C …
-Erfahrung bewertet / ✓ Gelernt aus Erfahrung von vor …
+_create_features()
+Model-Prediction: 31.90°C (outdoor: 9.7°C, room-dev: -0.48°C, Vorlauf-Ist: 30.5°C)
+Vorlauf-Soll calculated: 31.5°C (outdoor: 9.7°C, room: 23.0/22.5°C, Vorlauf-Ist: 30.5°C)
+Experience evaluated: dev=…, ✓ Learned from experience from …
 Saving model to /config/heatpump_flow_control.model.json
 ```
 
@@ -232,10 +232,10 @@ Warnungen, auf die man achten sollte:
 
 | Log-Zeile | Bedeutung |
 |---|---|
-| `raum_soll-Änderung: sofortiges Update (entprellt 60s)` | Sollwert wurde geändert — voller Regelzyklus läuft 60 s nach der letzten Änderung |
-| `Sollwert-Sprung begrenzt` | Schrittweitenlimit griff — beobachten, ob es häufig bei Normalbetrieb auftritt (dann wäre `max_schrittweite` zu eng oder das Modell unruhig) |
-| `Model liefert unrealistischen Wert` | Sanity-Band griff — häufigeres Auftreten deutet auf fehlende/verzerrte Trainingsdaten hin |
-| `Heizbedarf, Vorhersage … in toter Zone` | Totzonen-Klemme griff — normal bei kleinen Raumabweichungen; hebt auf die WP-Startschwelle an |
+| `raum_soll change: immediate update (debounced 60s)` | Sollwert wurde geändert — voller Regelzyklus läuft 60 s nach der letzten Änderung |
+| `Vorlauf-Soll jump limited` | Schrittweitenlimit griff — beobachten, ob es häufig bei Normalbetrieb auftritt (dann wäre `max_schrittweite` zu eng oder das Modell unruhig) |
+| `Model returns unrealistic value` | Sanity-Band griff — häufigeres Auftreten deutet auf fehlende/verzerrte Trainingsdaten hin |
+| `Heating demand, prediction … in dead zone` | Totzonen-Klemme griff — normal bei kleinen Raumabweichungen; hebt auf die WP-Startschwelle an |
 | `Not in heating mode - skipping update` | Gate: kein Heizbetrieb (Warmwasser/Absenkung) — normal |
 
 ---

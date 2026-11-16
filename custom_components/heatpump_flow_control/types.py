@@ -10,62 +10,62 @@ from typing import Any
 
 @dataclass
 class TempVorlauf:
-    """Temperatur und Vorlauf Paar."""
+    """Temperature and Vorlauf pair."""
 
     temp: float
     vorlauf: float
 
 @dataclass
 class DateTimeTemperatur:
-    """Datum-Uhrzeit und Temperatur Paar."""
+    """Date-time and temperature pair."""
     timestamp: datetime
     temperature: float
 
 class HistoryBuffer(deque):
-    """Eine Deque mit bequemem Zugriff auf das erste und letzte Element."""
+    """A deque with convenient access to the first and last element."""
 
     @property
     def first(self) -> DateTimeTemperatur:
-        """Gibt das älteste Element zurück oder None, wenn leer."""
+        """Returns the oldest element or None if empty."""
         return self[0]
 
     @property
     def last(self) -> DateTimeTemperatur:
-        """Gibt das neueste Element zurück oder None, wenn leer."""
+        """Returns the newest element or None if empty."""
         return self[-1]
 
     @property
     def prev(self) -> DateTimeTemperatur:
-        """Gibt das neueste Element zurück oder None, wenn leer."""
+        """Returns the newest element or None if empty."""
         return self[-2]
 
     @property
     def is_empty(self) -> bool:
-        """Gibt True zurück, wenn der Buffer leer ist."""
+        """Returns True if the buffer is empty."""
         return not self
 
     def reversed_without_latest(self):
-            """Iteriert rückwärts über alle Elemente außer dem neuesten."""
+            """Iterates backwards over all elements except the newest."""
             if len(self) <= 1:
                 return iter([])
-            # Erstellt einen Iterator, der das letzte Element überspringt
+            # Creates an iterator that skips the last element
             return reversed(list(islice(self, 0, len(self) - 1)))
 
     def get_trend(self, hours: float) -> float:
-            """Berechnet die Temperaturänderung in Kelvin pro Stunde (K/h).
+            """Calculates the temperature change in kelvin per hour (K/h).
 
-            Sucht den Punkt, der am nächsten am Zeitfenster liegt.
-            Gibt None zurück, wenn nicht genügend Daten vorhanden sind.
+            Searches for the point closest to the time window.
+            Returns None if there is not enough data.
             """
             if len(self) < 2:
                 return 0.0
 
             latest = self.last
-            # Wir suchen den Referenzpunkt X Stunden vor dem aktuellsten Eintrag
+            # We search for the reference point X hours before the most recent entry
             cutoff = latest.timestamp - timedelta(hours=hours)
 
-            # Suche rückwärts den ersten Eintrag, der älter oder gleich dem Cutoff ist
-            reference_entry = self.first # Default auf den ältesten Wert
+            # Search backwards for the first entry that is older than or equal to the cutoff
+            reference_entry = self.first  # Defaults to the oldest value
             for entry in reversed(self):
                 if entry.timestamp <= cutoff:
                     reference_entry = entry
@@ -87,7 +87,7 @@ class SensorValues:
     raum_ist: float
     raum_soll: float
     vorlauf_ist: float
-    thermische_leistung: float | None = None  # Optional: aktuelle thermische Leistung in kW
+    thermische_leistung: float | None = None  # Optional: current thermal power in kW
 
 @dataclass
 class ModelStats:
@@ -99,7 +99,7 @@ class ModelStats:
     erfahrungen_wartend: int
 
     def get(self, key: str, default: Any = None) -> Any:
-        """Simuliert das Verhalten eines Dictionaries."""
+        """Simulates dictionary behavior."""
         return getattr(self, key, default)
 
 @dataclass
@@ -126,24 +126,24 @@ class Features:
     wochentag_cos: float
 
     def to_dict(self) -> dict[str, float]:
-        """Gibt die Features als Dictionary zurück."""
+        """Returns the features as a dictionary."""
         return asdict(self)
 
     def items(self) -> Iterator[tuple[str, float]]:
-        """Gibt eine Iterierbare Liste von Schlüssel-Wert-Paaren zurück."""
+        """Returns an iterable list of key-value pairs."""
         return iter(asdict(self).items())
 
     def copy(self) -> "Features":
-        """Erstellt eine exakte Kopie der aktuellen Features-Instanz."""
+        """Creates an exact copy of the current features instance."""
         return replace(self)
 
     def get(self, key: str, default: Any = None) -> Any:
-        """Simuliert das Verhalten eines Dictionaries."""
+        """Simulates dictionary behavior."""
         return getattr(self, key, default)
 
 @dataclass
 class Erfahrung:
-    """Erfahrung für das Modell."""
+    """Experience for the model."""
 
     timestamp: datetime
     features: Features
@@ -151,20 +151,20 @@ class Erfahrung:
     raum_ist_vorher: float
     raum_soll: float
     gelernt: bool = False
-    # Gewichts-Faktor für den Lern-Schritt (1.0 = normal, < 1 = gedämpft,
-    # z. B. Erfahrungen aus raum_soll-getriggerten Sofort-Zyklen).
+    # Weight factor for the learning step (1.0 = normal, < 1 = damped,
+    # e.g. experiences from raum_soll-triggered immediate cycles).
     gewicht_faktor: float = 1.0
 
 @dataclass
 class VorlaufSollWeight:
-    """Vorlauf-Soll mit zugehörigem Gewicht."""
+    """Vorlauf-Soll with associated weight."""
 
     vorlauf_soll: float
     weight: float
 
 @dataclass
 class VorlaufSollAndFeatures:
-    """Vorlauf und zugehörige Features."""
+    """Vorlauf and associated features."""
 
     vorlauf: float
     features: Features

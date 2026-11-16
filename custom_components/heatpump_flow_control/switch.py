@@ -31,8 +31,8 @@ class FlowControlActiveSwitch(SwitchEntity, RestoreEntity):
         """Initialize the switch."""
         self._entry = entry
 
-        # Basis-Attribute
-        self._attr_name = "Heatpump Flow Control Aktiv"
+        # Base attributes
+        self._attr_name = "Heatpump Flow Control Active"
         self._attr_unique_id = f"{DOMAIN}_{entry.entry_id}_aktiv"
         self._attr_is_on = True
         self._attr_icon = "mdi:play-circle"
@@ -51,7 +51,7 @@ class FlowControlActiveSwitch(SwitchEntity, RestoreEntity):
         last_state = await self.async_get_last_state()
         if last_state is not None:
             self._attr_is_on = last_state.state == "on"
-            # Synchronisiere den Controller-Zustand beim Start
+            # Synchronize the controller state at startup
             self._controller.enabled = self._attr_is_on
             self._update_icon()
 

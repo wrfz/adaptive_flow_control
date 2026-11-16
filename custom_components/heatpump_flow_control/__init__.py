@@ -1,4 +1,4 @@
-"""Heatpump Flow Control Integration für Home Assistant."""
+"""Heatpump Flow Control integration for Home Assistant."""
 
 import logging
 from pathlib import Path
@@ -80,14 +80,14 @@ async def _async_load_or_create_controller(
     max_thermische_leistung = entry.data.get(CONF_MAX_THERMISCHE_LEISTUNG, DEFAULT_MAX_THERMISCHE_LEISTUNG)
     sanity_band = entry.data.get(CONF_SANITY_BAND, DEFAULT_SANITY_BAND)
 
-    # Model file paths: JSON-Snapshot (neu) und Legacy-Pickle (Migration)
+    # Model file paths: JSON snapshot (new) and legacy pickle (migration)
     json_file_name = f"{DOMAIN}.model.json"
     json_path = Path(hass.config.path(json_file_name))
     pkl_file_name = f"{DOMAIN}.model.pkl"
     pkl_path = Path(hass.config.path(pkl_file_name))
 
     def _lade_pkl() -> FlowController | None:
-        """Lädt den Legacy-Pickle und migriert ihn nach JSON."""
+        """Loads the legacy pickle and migrates it to JSON."""
 
         if not pkl_path.exists():
             return None
@@ -113,7 +113,7 @@ async def _async_load_or_create_controller(
 
             _LOGGER.info("Legacy model loaded successfully (version %d)", loaded_version)
 
-            # Migration: als JSON-Snapshot speichern
+            # Migration: save as JSON snapshot
             try:
                 speichere_snapshot(controller_to_snapshot(loaded), json_path)
                 _LOGGER.info("Migrated legacy model to %s", json_path)
@@ -152,7 +152,7 @@ async def _async_load_or_create_controller(
                 sanity_band=sanity_band,
             )
             _LOGGER.info(
-                "Model restored from JSON (schema %s, %d Erfahrungen, %d history)",
+                "Model restored from JSON (schema %s, %d experiences, %d history)",
                 snapshot.get("schema_version"),
                 len(controller.erfahrungs_liste),
                 len(controller.aussen_temp_history),
@@ -212,7 +212,7 @@ async def async_save_controller(
             _LOGGER.debug("Saving model to %s", json_path)
             speichere_snapshot(controller_to_snapshot(controller), json_path)
 
-            # Legacy-Pickle entfernen, sobald das JSON-Snapshot vorhanden ist
+            # Remove the legacy pickle once the JSON snapshot exists
             if pkl_path.exists():
                 pkl_path.unlink()
                 _LOGGER.info("Removed legacy model file %s", pkl_path)

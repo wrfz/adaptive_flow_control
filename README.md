@@ -83,10 +83,10 @@ Per cycle the model sees:
 
 | Stage | What | Protection against |
 |---|---|---|
-| 1. **Sanity band** (`sanity_band`, default 8 K) | If the prediction misses the heating curve by more than ±8 K, it counts as a model error (e.g. extrapolation onto never-seen feature combinations) and is replaced by the heating curve (log: `Model liefert unrealistischen Wert … verwende Fallback-Heizkurve`). | Wild jumps of the model |
+| 1. **Sanity band** (`sanity_band`, default 8 K) | If the prediction misses the heating curve by more than ±8 K, it counts as a model error (e.g. extrapolation onto never-seen feature combinations) and is replaced by the heating curve (log: `Model returns unrealistic value … using fallback heating curve`). | Wild jumps of the model |
 | 2. **Range limits** | Clamping to `[min_supply, max_supply]`. | physically nonsensical values |
-| 3. **Step limit** (`max_schrittweite`, default 1 K) | Max. change of the **model value** per cycle (log: `Sollwert-Sprung begrenzt …`). Invisible in normal operation (hourly changes < 1 K); it only catches jumps and is a permanent guardrail, not a temporary patch. | a wrong learning event lets the heat pump run full blast for hours |
-| 4. **Dead-zone clamp** (`hysterese`, default 3 K) | Many heat pump controllers (e.g. HPSU) only start when `SupplySetpoint ≥ flow_actual + 3 K`. With heating demand (`room_actual < room_target`) a prediction in this dead zone is clamped to at least `flow_actual + 3.5 K` (log: `Heizbedarf, Vorhersage … in toter Zone … geklemmt`). The clamp runs **after** the step limit and is therefore **not throttled** — the controller's deterministic start rule acts immediately while model jumps stay limited. | short cycling / no start / delayed start after setpoint change |
+| 3. **Step limit** (`max_schrittweite`, default 1 K) | Max. change of the **model value** per cycle (log: `Vorlauf-Soll jump limited …`). Invisible in normal operation (hourly changes < 1 K); it only catches jumps and is a permanent guardrail, not a temporary patch. | a wrong learning event lets the heat pump run full blast for hours |
+| 4. **Dead-zone clamp** (`hysterese`, default 3 K) | Many heat pump controllers (e.g. HPSU) only start when `SupplySetpoint ≥ flow_actual + 3 K`. With heating demand (`room_actual < room_target`) a prediction in this dead zone is clamped to at least `flow_actual + 3.5 K` (log: `Heating demand, prediction … in dead zone … clamped`). The clamp runs **after** the step limit and is therefore **not throttled** — the controller's deterministic start rule acts immediately while model jumps stay limited. | short cycling / no start / delayed start after setpoint change |
 
 The step limit is **never switched off automatically**. If the model later learns reliably enough that faster adaptation is desired: increase the `max_schrittweite` option (e.g. 2 K) or set it to `0` (= off).
 
@@ -162,7 +162,7 @@ State: outdoor 9.7 °C, room 23.0 °C, room target 22.5 °C, flow actual 30.5 °
 2. Model prediction: **31.9 °C** → inside the band → accepted.
 3. Range limits [25; 40]: unchanged.
 4. Dead-zone clamp: room is warm enough (23.0 ≥ 22.5) → **no** heating demand → no clamp needed.
-5. Step limit: 31.9 > 30.5 + 1.0 → **limited to 31.5 °C** (log: `Sollwert-Sprung begrenzt: 31.9°C → 31.5°C (max 1.0K pro Update)`).
+5. Step limit: 31.9 > 30.5 + 1.0 → **limited to 31.5 °C** (log: `Vorlauf-Soll jump limited: 31.9°C -> 31.5°C (max 1.0K per update)`).
 6. Delivered: **31.5 °C** — and exactly this value lands in the experience for later learning.
 
 ### Example 2: Dead-zone clamp prevents heat pump cycling and delayed start
@@ -171,7 +171,7 @@ State: room 21.8 °C, target 22.5 °C → heating demand. Flow actual 30.1 °C. 
 
 - The heat pump only starts at `setpoint ≥ flow_actual + 3 K` = 33.1 K. A setpoint of 28.0 °C would sit in the dead zone: the pump never starts or cycles.
 - 1. Step limit: 28.0 < 30.5 − 1 → limited to **29.5 °C** (model protection).
-- 2. Dead-zone clamp: `min_setpoint = 30.1 + 3.0 + 0.5 = 33.6 °C` → delivered is **33.6 °C** (log: `Heizbedarf, Vorhersage 29.5°C in toter Zone (< Tv+3.5K): geklemmt auf 33.6°C`) — **not throttled**, the pump starts immediately.
+- 2. Dead-zone clamp: `min_setpoint = 30.1 + 3.0 + 0.5 = 33.6 °C` → delivered is **33.6 °C** (log: `Heating demand, prediction 29.5°C in dead zone (< Tv+3.5K): clamped to 33.6°C`) — **not throttled**, the pump starts immediately.
 - If the clamp ran (as it used to) before the step limit, it would have squeezed the setpoint to 31.5 °C and the pump would only have started after 2–3 further cycles.
 - The experience stores 33.6 °C (the delivered value), not the 28.0.
 
@@ -180,7 +180,7 @@ State: room 21.8 °C, target 22.5 °C → heating demand. Flow actual 30.1 °C. 
 At night at −2 °C outdoor temperature the model delivers **39.2 °C**, although the heating curve says ~26 °C.
 
 - Band ±8 K → [18; 34]. 39.2 is outside → model error.
-- Delivered is the **heating curve (26 °C)** (log: `Model liefert unrealistischen Wert 39.2°C (Heizkurve: 26.0°C, Band ±8.0K), verwende Fallback-Heizkurve`).
+- Delivered is the **heating curve (26 °C)** (log: `Model returns unrealistic value 39.2°C (heating curve: 26.0°C, band ±8.0K), using fallback heating curve`).
 - For learning the incident stays harmless: here too the experience carries the delivered value as anchor.
 
 ### Example 4: Time-shifted learning
@@ -223,10 +223,10 @@ Enable DEBUG logging for the integration: *Settings → Devices & Services → H
 _async_update_vorlauf_soll() controler.enabled: 1, is_heating: 1
 _is_heating_mode: on, 1
 _async_get_sensor_values() → Reading sensors: aussen=9.7, raum_ist=23.0, …
-_erstelle_features()
-Model-Prediction: 31.90°C (Außen: 9.7°C, Raum-Abw: -0.48°C, Vorlauf-Ist: 30.5°C)
-Vorlauf-Soll berechnet: 31.5°C …
-Erfahrung bewertet / ✓ Gelernt aus Erfahrung von vor …
+_create_features()
+Model-Prediction: 31.90°C (outdoor: 9.7°C, room-dev: -0.48°C, Vorlauf-Ist: 30.5°C)
+Vorlauf-Soll calculated: 31.5°C (outdoor: 9.7°C, room: 23.0/22.5°C, Vorlauf-Ist: 30.5°C)
+Experience evaluated: dev=…, ✓ Learned from experience from …
 Saving model to /config/heatpump_flow_control.model.json
 ```
 
@@ -234,13 +234,13 @@ Warnings to watch for:
 
 | Log line | Meaning |
 |---|---|
-| `raum_soll-Änderung: sofortiges Update (entprellt 60s)` | Setpoint was changed — full control cycle runs 60 s after the last change |
-| `Sollwert-Sprung begrenzt` | Step limit kicked in — watch whether it happens often in normal operation (then `max_schrittweite` would be too tight or the model nervous) |
-| `Model liefert unrealistischen Wert` | Sanity band kicked in — frequent occurrence indicates missing/distorted training data |
-| `Heizbedarf, Vorhersage … in toter Zone` | Dead-zone clamp kicked in — normal with small room deviations; raises to the heat pump's start threshold |
+| `raum_soll change: immediate update (debounced 60s)` | Setpoint was changed — full control cycle runs 60 s after the last change |
+| `Vorlauf-Soll jump limited` | Step limit kicked in — watch whether it happens often in normal operation (then `max_schrittweite` would be too tight or the model nervous) |
+| `Model returns unrealistic value` | Sanity band kicked in — frequent occurrence indicates missing/distorted training data |
+| `Heating demand, prediction … in dead zone` | Dead-zone clamp kicked in — normal with small room deviations; raises to the heat pump's start threshold |
 | `Not in heating mode - skipping update` | Gate: no heating operation (hot water/setback) — normal |
 
-(The log lines are German because the integration logs in its native language.)
+(The lines above are the integration's actual log output.)
 
 ---
 
