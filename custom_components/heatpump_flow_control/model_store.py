@@ -119,6 +119,7 @@ def controller_to_snapshot(controller: FlowController) -> dict[str, Any]:
             "n": float(controller.metric._mean.n),
         },
         "erfahrungen": [_erfahrung_als_json(e) for e in controller.erfahrungs_liste],
+        "erfahrungen_gelernt_total": int(getattr(controller, "erfahrungen_gelernt_total", 0)),
         "history": [_temp_als_json(t) for t in controller.aussen_temp_history],
     }
 
@@ -130,6 +131,7 @@ def snapshot_to_controller(
     learning_rate: float,
     min_thermische_leistung: float = 0.6,
     max_thermische_leistung: float = 6.0,
+    sanity_band: float = 5.0,
 ) -> FlowController:
     """Baut einen FlowController aus einem Snapshot neu auf.
 
@@ -174,10 +176,12 @@ def snapshot_to_controller(
         learning_rate=learning_rate,
         min_thermische_leistung=min_thermische_leistung,
         max_thermische_leistung=max_thermische_leistung,
+        sanity_band=sanity_band,
     )
     controller.model = compose.Pipeline(scaler, reg)
     controller.metric = _metric_aus_snapshot(snapshot["metric"])
     controller.erfahrungs_liste = [_erfahrung_aus_json(e) for e in snapshot["erfahrungen"]]
+    controller.erfahrungen_gelernt_total = int(snapshot.get("erfahrungen_gelernt_total", 0))
     controller.aussen_temp_history = HistoryBuffer(
         _temp_aus_json(t) for t in snapshot["history"]
     )

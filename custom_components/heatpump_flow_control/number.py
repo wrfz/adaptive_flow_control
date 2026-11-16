@@ -35,6 +35,7 @@ from .const import (
     CONF_AUSSEN_TEMP_SENSOR,
     CONF_IS_HEATING_ENTITY,
     CONF_HYSTERESE,
+    CONF_MAX_SCHRITTWEITE,
     CONF_RAUM_IST_SENSOR,
     CONF_RAUM_SOLL_SENSOR,
     CONF_THERMISCHE_LEISTUNG_SENSOR,
@@ -42,6 +43,7 @@ from .const import (
     CONF_VORLAUF_IST_SENSOR,
     CONF_VORLAUF_SOLL_ENTITY,
     DEFAULT_HYSTERESE,
+    DEFAULT_MAX_SCHRITTWEITE,
     DEFAULT_UPDATE_INTERVAL,
     DOMAIN,
 )
@@ -94,6 +96,28 @@ def klemme_vorlauf_soll(
     return vorlauf
 
 
+def begrenze_schrittweite(
+    neu: float,
+    previous: float | None,
+    max_schrittweite: float,
+) -> float:
+    """Begrenze die Änderung des Sollwerts pro Update-Zyklus.
+
+    Ein falsches Lern-Ereignis darf den Sollwert nicht um viele Kelvin
+    springen lassen — sonst läuft die HPSU (3K-Schaltregel) stundenlang
+    ununterbrochen. Kein Limit, wenn previous None ist (erster Lauf) oder
+    max_schrittweite <= 0.
+    """
+    if previous is None or max_schrittweite <= 0:
+        return neu
+
+    if neu > previous + max_schrittweite:
+        return previous + max_schrittweite
+    if neu < previous - max_schrittweite:
+        return previous - max_schrittweite
+    return neu
+
+
 class FlowControlNumber(NumberEntity, RestoreEntity):
     """Representation of Flow Control Number Entity."""
 
@@ -128,6 +152,9 @@ class FlowControlNumber(NumberEntity, RestoreEntity):
             CONF_UPDATE_INTERVAL, DEFAULT_UPDATE_INTERVAL
         )
         self._hysterese = config.get(CONF_HYSTERESE, DEFAULT_HYSTERESE)
+        self._max_schrittweite = config.get(
+            CONF_MAX_SCHRITTWEITE, DEFAULT_MAX_SCHRITTWEITE
+        )
 
         # State
         self._attr_native_value = None
@@ -233,6 +260,17 @@ class FlowControlNumber(NumberEntity, RestoreEntity):
     async def async_will_remove_from_hass(self) -> None:
         """Run when entity will be removed from hass."""
         _LOGGER.info("async_will_remove_from_hass())")
+
+        # Snapshot schreiben, bevor die Entity weg ist: gelernte Erfahrungen
+        # (auch ungelernte aus dem letzten Zyklus) dürfen bei Shutdown/
+        # Restart nicht verloren gehen.
+        if self._controller is not None and self._config_entry is not None:
+            try:
+                await async_save_controller(self.hass, self._config_entry, self._controller)
+            except Exception:  # noqa: BLE001
+                _LOGGER.warning(
+                    "Model-Snapshot bei Entfernen nicht gespeichert", exc_info=True
+                )
 
         if self._update_interval_listener:
             self._update_interval_listener()
@@ -458,6 +496,30 @@ class FlowControlNumber(NumberEntity, RestoreEntity):
                     vorlauf_soll_effektiv,
                 )
 
+            # Schrittweitenlimit: Keine Sprünge von mehreren Kelvin pro
+            # Update-Zyklus (siehe begrenze_schrittweite).
+            previous_value = (
+                float(self._attr_native_value)
+                if self._attr_native_value is not None
+                else None
+            )
+            vorlauf_soll_geliefert = vorlauf_soll_effektiv
+            vorlauf_soll_effektiv = begrenze_schrittweite(
+                vorlauf_soll_effektiv, previous_value, self._max_schrittweite
+            )
+            if vorlauf_soll_effektiv != vorlauf_soll_geliefert:
+                _LOGGER.warning(
+                    "Sollwert-Sprung begrenzt: %.1f°C -> %.1f°C (max %.1fK pro Update)",
+                    vorlauf_soll_geliefert,
+                    vorlauf_soll_effektiv,
+                    self._max_schrittweite,
+                )
+
+            # Reward-Zuschreibung: Der Anker der frisch erstellten Erfahrung
+            # muss dem Wert entsprechen, der wirklich an die WP geht
+            # (nach Clamp und Schrittweitenlimit).
+            self._controller.setze_gelieferten_vorlauf(vorlauf_soll_effektiv)
+
             # Track successful prediction time
             self._last_prediction_time = dt_util.now()
 
@@ -472,15 +534,15 @@ class FlowControlNumber(NumberEntity, RestoreEntity):
             # Update attributes
             model_statistics = self._controller.get_model_statistics()
 
-            # Prüfe aktuelle Betriebsart
-            current_betriebsart = None
+            # Prüfe is_heating (pumpenagnostisches Gate, kein HPSU-Betriebsart-Sensor)
+            current_is_heating = None
             if self._is_heating_entity:
-                betriebsart_state = self.hass.states.get(self._is_heating_entity)
-                if betriebsart_state and betriebsart_state.state not in (
+                is_heating_state = self.hass.states.get(self._is_heating_entity)
+                if is_heating_state and is_heating_state.state not in (
                     "unavailable",
                     "unknown",
                 ):
-                    current_betriebsart = betriebsart_state.state
+                    current_is_heating = is_heating_state.state
 
             self._extra_attributes = {
                 ATTR_AUSSEN_TEMP: round(sensor_values.aussen_temp, 1),
@@ -493,9 +555,10 @@ class FlowControlNumber(NumberEntity, RestoreEntity):
                 ATTR_LAST_UPDATE: self._last_update.isoformat(),
                 ATTR_NEXT_UPDATE: self._next_update.isoformat(),
                 "history_size": model_statistics.history_size,
-                "betriebsart": current_betriebsart,
-                # NEU: History-basiertes Lernen (persistiert über Reboots)
-                "erfahrungen_gelernt": self._extra_attributes.get("erfahrungen_gelernt", 0)
+                "is_heating": current_is_heating,
+                # Kumulativer Zähler aus dem Controller (nicht den eigenen
+                # Attributwert lesen — der ist beim Schreiben veraltet)
+                "erfahrungen_gelernt": model_statistics.erfahrungen_gelernt
             }
 
             # Prüfe ob Switch aktiv ist, dann sende an Wärmepumpe

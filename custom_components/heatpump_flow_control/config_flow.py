@@ -14,9 +14,11 @@ from .const import (
     DEFAULT_MAX_VORLAUF_HI,
     DEFAULT_MAX_VORLAUF_LO,
     DEFAULT_HYSTERESE,
+    DEFAULT_MAX_SCHRITTWEITE,
     DEFAULT_MIN_THERMISCHE_LEISTUNG,
     DEFAULT_MIN_VORLAUF_HI,
     DEFAULT_MIN_VORLAUF_LO,
+    DEFAULT_SANITY_BAND,
     DOMAIN,
 )
 
@@ -128,6 +130,30 @@ def get_config_schema(defaults=None):
                     min=0.0,
                     max=10.0,
                     step=0.1,
+                    mode=NumberSelectorMode.BOX,
+                    unit_of_measurement="K",
+                )
+            ),
+            vol.Optional(
+                "max_schrittweite",
+                default=defaults.get("max_schrittweite", DEFAULT_MAX_SCHRITTWEITE),
+            ): selector.NumberSelector(
+                selector.NumberSelectorConfig(
+                    min=0.0,
+                    max=5.0,
+                    step=0.1,
+                    mode=NumberSelectorMode.BOX,
+                    unit_of_measurement="K",
+                )
+            ),
+            vol.Optional(
+                "sanity_band",
+                default=defaults.get("sanity_band", DEFAULT_SANITY_BAND),
+            ): selector.NumberSelector(
+                selector.NumberSelectorConfig(
+                    min=1.0,
+                    max=20.0,
+                    step=0.5,
                     mode=NumberSelectorMode.BOX,
                     unit_of_measurement="K",
                 )

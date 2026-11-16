@@ -13,11 +13,13 @@ from .const import (
     CONF_MAX_VORLAUF,
     CONF_MIN_THERMISCHE_LEISTUNG,
     CONF_MIN_VORLAUF,
+    CONF_SANITY_BAND,
     DEFAULT_LEARNING_RATE,
     DEFAULT_MAX_THERMISCHE_LEISTUNG,
     DEFAULT_MAX_VORLAUF_LO,
     DEFAULT_MIN_THERMISCHE_LEISTUNG,
     DEFAULT_MIN_VORLAUF_HI,
+    DEFAULT_SANITY_BAND,
 )
 from .flow_controller import PICKLE_VERSION, FlowController
 from .model_store import (
@@ -76,6 +78,7 @@ async def _async_load_or_create_controller(
     learning_rate = entry.data.get(CONF_LEARNING_RATE, DEFAULT_LEARNING_RATE)
     min_thermische_leistung = entry.data.get(CONF_MIN_THERMISCHE_LEISTUNG, DEFAULT_MIN_THERMISCHE_LEISTUNG)
     max_thermische_leistung = entry.data.get(CONF_MAX_THERMISCHE_LEISTUNG, DEFAULT_MAX_THERMISCHE_LEISTUNG)
+    sanity_band = entry.data.get(CONF_SANITY_BAND, DEFAULT_SANITY_BAND)
 
     # Model file paths: JSON-Snapshot (neu) und Legacy-Pickle (Migration)
     json_file_name = f"{DOMAIN}.model.json"
@@ -146,6 +149,7 @@ async def _async_load_or_create_controller(
                 learning_rate=learning_rate,
                 min_thermische_leistung=min_thermische_leistung,
                 max_thermische_leistung=max_thermische_leistung,
+                sanity_band=sanity_band,
             )
             _LOGGER.info(
                 "Model restored from JSON (schema %s, %d Erfahrungen, %d history)",
@@ -171,6 +175,7 @@ async def _async_load_or_create_controller(
             learning_rate=learning_rate,
             min_thermische_leistung=min_thermische_leistung,
             max_thermische_leistung=max_thermische_leistung,
+            sanity_band=sanity_band,
         )
     else:
         # Create new controller
@@ -181,6 +186,7 @@ async def _async_load_or_create_controller(
             learning_rate=learning_rate,
             min_thermische_leistung=min_thermische_leistung,
             max_thermische_leistung=max_thermische_leistung,
+            sanity_band=sanity_band,
         )
         loaded_controller.setup(iterations=1)
 

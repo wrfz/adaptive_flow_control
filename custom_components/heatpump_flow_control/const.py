@@ -17,6 +17,8 @@ CONF_MAX_THERMISCHE_LEISTUNG = "max_thermische_leistung"
 CONF_UPDATE_INTERVAL = "update_interval"
 CONF_LEARNING_RATE = "learning_rate"
 CONF_HYSTERESE = "hysterese"
+CONF_MAX_SCHRITTWEITE = "max_schrittweite"
+CONF_SANITY_BAND = "sanity_band"
 
 # Defaults
 DEFAULT_MIN_VORLAUF_LO = 25.0
@@ -29,6 +31,17 @@ DEFAULT_HYSTERESE = 3.0
 # Sicherheitsabstand zusätzlich zur Hysterese, damit der Wert nach dem
 # Runden von Tv/Soll nicht unter der Schaltregel landet.
 HYSTERESE_MARGIN = 0.5
+# Max. Änderung des Sollwerts pro Update-Zyklus (K). Verhindert, dass das
+# Modell mit einem falschen Lern-Ereignis den Sollwert um viele Kelvin
+# springen lässt und die WP dann stundenlang Vollgas läuft.
+DEFAULT_MAX_SCHRITTWEITE = 1.0
+# Toleranzband um die Heizkurve-Fallback (K). Vorhersagen außerhalb des
+# Bands werden als Modellfehler behandelt und durch den Fallback ersetzt.
+# Nicht zu eng: Das Modell darf legitim von der Heizkurve abweichen,
+# sobald es echte Daten gelernt hat (Testlernen zeigt Abweichungen ~5.5K
+# bei kalten Außentemperaturen). Der Wildwuchs-Sprung 28→39 im Nacht-
+# Extrapolationsfall (2026-11-16) lag bei ~14K und fällt trotzdem auf.
+DEFAULT_SANITY_BAND = 8.0
 DEFAULT_MIN_THERMISCHE_LEISTUNG = 0.6  # kW
 DEFAULT_MAX_THERMISCHE_LEISTUNG = 6.0  # kW
 

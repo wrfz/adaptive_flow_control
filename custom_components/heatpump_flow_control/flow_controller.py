@@ -8,6 +8,7 @@ from typing import Any
 
 from river import compose, linear_model, metrics, optim, preprocessing
 
+from .const import DEFAULT_SANITY_BAND
 from .types import (
     DateTimeTemperatur,
     Erfahrung,
@@ -60,6 +61,7 @@ class FlowController:
         learning_rate: float,
         min_thermische_leistung: float = 0.6,
         max_thermische_leistung: float = 6.0,
+        sanity_band: float = DEFAULT_SANITY_BAND,
     ) -> None:
         """Initialize the flow controller."""
 
@@ -69,6 +71,7 @@ class FlowController:
         self.learning_rate = learning_rate
         self.min_thermische_leistung = min_thermische_leistung
         self.max_thermische_leistung = max_thermische_leistung
+        self.sanity_band = sanity_band
         self.pickle_version = PICKLE_VERSION  # Für Migrations-Check
         self.min_reward_hours = 4.0  # Lernen aus Features die 4h alt sind
         self.short_history_hours = 3.0
@@ -78,6 +81,9 @@ class FlowController:
         self._enabled = True  # Default: aktiv, wird vom Switch-Entity überschrieben
         self.erfahrungs_liste: list[Erfahrung] = []  # Speichert alle Predictions mit Features
         self.aussen_temp_history: HistoryBuffer = HistoryBuffer()
+        # Kumulativer Zähler aller gelernten Erfahrungen (persistiert;
+        # die Liste selbst verwirft gelernte Einträge beim Cleanup)
+        self.erfahrungen_gelernt_total = 0
 
     def setup(self, iterations: int = 0) -> None:
         """Initialize the flow controller."""
@@ -100,6 +106,7 @@ class FlowController:
 
         # Metriken
         self.metric = metrics.MAE()
+        self.erfahrungen_gelernt_total = 0
 
         # Model mit synthetischen Daten trainieren
         self._train_synthetic_data(iterations)
@@ -132,6 +139,9 @@ class FlowController:
             # Experience list for delayed learning
             "erfahrungs_liste": self.erfahrungs_liste,
 
+            # Kumulativer Zähler gelernter Erfahrungen
+            "erfahrungen_gelernt_total": self.erfahrungen_gelernt_total,
+
             # Temperature histories for trend calculation
             "aussen_temp_history": self.aussen_temp_history,
         }
@@ -150,6 +160,8 @@ class FlowController:
         self.metric = state["metric"]
         self.erfahrungs_liste = state["erfahrungs_liste"]
         self.aussen_temp_history = state["aussen_temp_history"]
+        # Alter Pickle-State ohne Zähler: bei 0 starten
+        self.erfahrungen_gelernt_total = state.get("erfahrungen_gelernt_total", 0)
 
         # _enabled wird nicht gepickelt: hier sicher initialisieren,
         # der Switch-Entity setzt den echten Wert in async_added_to_hass().
@@ -177,6 +189,7 @@ class FlowController:
         learning_rate: float,
         min_thermische_leistung: float = 0.6,
         max_thermische_leistung: float = 6.0,
+        sanity_band: float = DEFAULT_SANITY_BAND,
     ) -> None:
         """Update configuration parameters after unpickling.
 
@@ -189,12 +202,14 @@ class FlowController:
             learning_rate: Learning rate for the model
             min_thermische_leistung: Minimum thermal power in kW
             max_thermische_leistung: Maximum thermal power in kW
+            sanity_band: Toleranzband um die Heizkurve-Fallback in K
         """
         self.min_vorlauf = min_vorlauf
         self.max_vorlauf = max_vorlauf
         self.learning_rate = learning_rate
         self.min_thermische_leistung = min_thermische_leistung
         self.max_thermische_leistung = max_thermische_leistung
+        self.sanity_band = sanity_band
 
         # Set other configuration defaults
         self.min_reward_hours = 4.0
@@ -511,6 +526,10 @@ class FlowController:
             if not e.gelernt and e.timestamp > cutoff_cleanup
         ]
 
+        # Kumulativer Zähler: gelernte Einträge verschwinden aus der Liste,
+        # deshalb nicht daraus zählen
+        self.erfahrungen_gelernt_total += stats["gelernt"]
+
         if stats["gelernt"] > 0:
             _LOGGER.info(
                 "Feature-Lernen abgeschlossen: %d gelernt, %d übersprungen, %d in Liste",
@@ -537,6 +556,11 @@ class FlowController:
         _LOGGER.info("berechne_vorlauf_soll()")
         features = self._erstelle_features(sensor_values)
 
+        # Fallback-Heizkurve als Referenz für das Sanity-Band
+        fallback_vorlauf = self._heizkurve_fallback(
+            sensor_values.aussen_temp, features.raum_abweichung
+        )
+
         # Model für Prediction verwenden
         try:
             raw_prediction = self.model.predict_one(features.to_dict())
@@ -547,19 +571,27 @@ class FlowController:
                 features.raum_abweichung,
                 sensor_values.vorlauf_ist,
             )
-            vorlauf_soll = raw_prediction
 
-            if vorlauf_soll > 1000 or vorlauf_soll < -1000:
+            # Sanity-Band: Vorhersagen außerhalb des Bands um die
+            # Heizkurve sind Modellfehler (z. B. Extrapolation auf
+            # Feature-Kombinationen, die das Training nicht gesehen
+            # hat) und werden durch den Fallback ersetzt.
+            band = self.sanity_band
+            if fallback_vorlauf - band <= raw_prediction <= fallback_vorlauf + band:
+                vorlauf_soll = raw_prediction
+            else:
                 _LOGGER.warning(
-                    "Model liefert unrealistischen Wert %.1f°C, clampe auf Grenzen",
-                    vorlauf_soll,
+                    "Model liefert unrealistischen Wert %.1f°C (Heizkurve: %.1f°C, Band ±%.1fK), "
+                    "verwende Fallback-Heizkurve",
+                    raw_prediction,
+                    fallback_vorlauf,
+                    band,
                 )
+                vorlauf_soll = fallback_vorlauf
 
         except Exception as e:
             _LOGGER.error("Fehler bei Model-Prediction: %s, verwende Fallback-Heizkurve", e)
-            vorlauf_soll = self._heizkurve_fallback(
-                sensor_values.aussen_temp, features.raum_abweichung
-            )
+            vorlauf_soll = fallback_vorlauf
 
         # Begrenzung auf konfigurierten Bereich
         vorlauf_soll = max(self.min_vorlauf, min(self.max_vorlauf, vorlauf_soll))
@@ -595,16 +627,41 @@ class FlowController:
 
         return VorlaufSollAndFeatures(vorlauf=vorlauf_soll, features=features)
 
+    def setze_gelieferten_vorlauf(self, vorlauf_soll_geliefert: float) -> None:
+        """Aktualisiert die jüngste Erfahrung auf den real gelieferten Wert.
+
+        klemme_vorlauf_soll() und begrenze_schrittweite() greifen erst nach
+        berechne_vorlauf_soll() ein. Damit die 4h-Reward-Bewertung dem
+        tatsächlich gelieferten Wert zugeschrieben wird (und nicht der
+        ungeklammerten Vorhersage), muss der Anker der Erfahrung auf den
+        Lieferwert korrigiert werden — sonst lernt das Modell am falschen
+        Anker und der Begrenzungs-Bias kommt über den Reward zurück.
+        """
+
+        if not self.erfahrungs_liste:
+            return
+
+        erfahrung = self.erfahrungs_liste[-1]
+        if erfahrung.gelernt:
+            return
+
+        if erfahrung.vorlauf_soll != vorlauf_soll_geliefert:
+            _LOGGER.info(
+                "Erfahrungs-Anker an Lieferwert angepasst: %.1f°C -> %.1f°C",
+                erfahrung.vorlauf_soll,
+                vorlauf_soll_geliefert,
+            )
+            erfahrung.vorlauf_soll = vorlauf_soll_geliefert
+
     def get_model_statistics(self) -> ModelStats:
         """Gibt Model-Statistiken zurück."""
-        # Feature-basiertes Lernen
-        gelernt = sum(1 for e in self.erfahrungs_liste if e.gelernt)
+        # Kumulativer Zähler (die Liste verwirft gelernte Einträge beim Cleanup)
         wartend = sum(1 for e in self.erfahrungs_liste if not e.gelernt)
 
         return ModelStats(
             mae = self.metric.get(),
             history_size = len(self.aussen_temp_history),
-            erfahrungen_total = len(self.erfahrungs_liste),
-            erfahrungen_gelernt = gelernt,
+            erfahrungen_total = len(self.erfahrungs_liste) + self.erfahrungen_gelernt_total,
+            erfahrungen_gelernt = self.erfahrungen_gelernt_total,
             erfahrungen_wartend = wartend,
         )
