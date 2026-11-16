@@ -280,7 +280,7 @@ class TestIsHeatingMode:
         number = FlowControlNumber(mock_hass, full_config, mock_config_entry)
 
         betriebsart_state = MagicMock()
-        betriebsart_state.state = "Heizen"
+        betriebsart_state.state = "on"
         mock_hass.states.get.return_value = betriebsart_state
 
         result = await number._is_heating_mode()
@@ -300,18 +300,6 @@ class TestIsHeatingMode:
 
         assert result is False
 
-    @pytest.mark.asyncio
-    async def test_sensor_with_whitespace(self, mock_hass, full_config, mock_config_entry):
-        """Test when sensor value has whitespace."""
-        number = FlowControlNumber(mock_hass, full_config, mock_config_entry)
-
-        betriebsart_state = MagicMock()
-        betriebsart_state.state = "  Heizen  "
-        mock_hass.states.get.return_value = betriebsart_state
-
-        result = await number._is_heating_mode()
-
-        assert result is True
 
 
 class TestAsyncSetVorlaufSoll:

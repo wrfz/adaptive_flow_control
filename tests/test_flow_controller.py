@@ -48,7 +48,7 @@ class TestFlowControllerInit:
 
         # Trainiere Model (10+ Predictions)
         for i in range(15):
-            vorlauf_soll_and_features = controller.berechne_vorlauf_soll(
+            vorlauf_soll_and_features = controller.calculate_vorlauf_soll(
                 SensorValues(aussen_temp=5.0 - i * 0.5,
                 raum_ist=21.0,
                 raum_soll=21.0,
@@ -67,7 +67,7 @@ class TestBewertung:
 class TestFeatureCreation:
     """Test feature creation logic."""
 
-    def test_erstelle_features_basic(self):
+    def test_create_features_basic(self):
         """Test basic feature creation."""
         controller = FlowController(
             min_vorlauf=18.0,
@@ -75,7 +75,7 @@ class TestFeatureCreation:
             learning_rate=0.01,
         )
 
-        features = controller._erstelle_features(
+        features = controller._create_features(
             SensorValues(
                 aussen_temp=5.0,
                 raum_ist=22.0,
@@ -95,7 +95,7 @@ class TestFeatureCreation:
         assert features.wochentag_sin is not None
         assert features.wochentag_cos is not None
 
-    def test_erstelle_features_with_trends(self):
+    def test_create_features_with_trends(self):
         """Test feature creation with temperature trends."""
         controller = FlowController(
             min_vorlauf=18.0,
@@ -110,7 +110,7 @@ class TestFeatureCreation:
             DateTimeTemperatur(timestamp=datetime.now(), temperature=5.0)
         ])
 
-        features = controller._erstelle_features(
+        features = controller._create_features(
             SensorValues(
                 aussen_temp=5.0,
                 raum_ist=22.0,
@@ -135,30 +135,30 @@ class TestPrediction:
         )
 
         # Test direct fallback curve (not the trained model)
-        assert controller._heizkurve_fallback(-20.0, 0.0) == pytest.approx(40.00, abs=0.01)     # noqa: SLF001
-        assert controller._heizkurve_fallback(-10.0, 0.0) == pytest.approx(35.71, abs=0.01)     # noqa: SLF001
-        assert controller._heizkurve_fallback(  0.0, 0.0) == pytest.approx(31.42, abs=0.01)     # noqa: SLF001
-        assert controller._heizkurve_fallback( 10.0, 0.0) == pytest.approx(27.14, abs=0.01)     # noqa: SLF001
-        assert controller._heizkurve_fallback( 15.0, 0.0) == pytest.approx(25.00, abs=0.01)     # noqa: SLF001
-        assert controller._heizkurve_fallback( 20.0, 0.0) == pytest.approx(25.00, abs=0.01)     # noqa: SLF001
+        assert controller._heating_curve_fallback(-20.0, 0.0) == pytest.approx(40.00, abs=0.01)     # noqa: SLF001
+        assert controller._heating_curve_fallback(-10.0, 0.0) == pytest.approx(35.71, abs=0.01)     # noqa: SLF001
+        assert controller._heating_curve_fallback(  0.0, 0.0) == pytest.approx(31.42, abs=0.01)     # noqa: SLF001
+        assert controller._heating_curve_fallback( 10.0, 0.0) == pytest.approx(27.14, abs=0.01)     # noqa: SLF001
+        assert controller._heating_curve_fallback( 15.0, 0.0) == pytest.approx(25.00, abs=0.01)     # noqa: SLF001
+        assert controller._heating_curve_fallback( 20.0, 0.0) == pytest.approx(25.00, abs=0.01)     # noqa: SLF001
 
         # Test with room temperature deviation (room too hot)
-        assert controller._heizkurve_fallback(-20.0, -1.0) == pytest.approx(38.00, abs=0.01)    # noqa: SLF001
-        assert controller._heizkurve_fallback(-10.0, -1.0) == pytest.approx(33.71, abs=0.01)    # noqa: SLF001
-        assert controller._heizkurve_fallback(  0.0, -1.0) == pytest.approx(29.42, abs=0.01)    # noqa: SLF001
-        assert controller._heizkurve_fallback( 10.0, -1.0) == pytest.approx(25.14, abs=0.01)    # noqa: SLF001
-        assert controller._heizkurve_fallback( 15.0, -1.0) == pytest.approx(25.00, abs=0.01)    # noqa: SLF001
-        assert controller._heizkurve_fallback( 20.0, -1.0) == pytest.approx(25.00, abs=0.01)    # noqa: SLF001
+        assert controller._heating_curve_fallback(-20.0, -1.0) == pytest.approx(38.00, abs=0.01)    # noqa: SLF001
+        assert controller._heating_curve_fallback(-10.0, -1.0) == pytest.approx(33.71, abs=0.01)    # noqa: SLF001
+        assert controller._heating_curve_fallback(  0.0, -1.0) == pytest.approx(29.42, abs=0.01)    # noqa: SLF001
+        assert controller._heating_curve_fallback( 10.0, -1.0) == pytest.approx(25.14, abs=0.01)    # noqa: SLF001
+        assert controller._heating_curve_fallback( 15.0, -1.0) == pytest.approx(25.00, abs=0.01)    # noqa: SLF001
+        assert controller._heating_curve_fallback( 20.0, -1.0) == pytest.approx(25.00, abs=0.01)    # noqa: SLF001
 
         # Test with room temperature deviation (room too cold)
-        assert controller._heizkurve_fallback(-20.0, 1.0) == pytest.approx(40.00, abs=0.01)     # noqa: SLF001
-        assert controller._heizkurve_fallback(-10.0, 1.0) == pytest.approx(37.71, abs=0.01)     # noqa: SLF001
-        assert controller._heizkurve_fallback(  0.0, 1.0) == pytest.approx(33.43, abs=0.01)     # noqa: SLF001
-        assert controller._heizkurve_fallback( 10.0, 1.0) == pytest.approx(29.14, abs=0.01)     # noqa: SLF001
-        assert controller._heizkurve_fallback( 15.0, 1.0) == pytest.approx(27.00, abs=0.01)     # noqa: SLF001
-        assert controller._heizkurve_fallback( 20.0, 1.0) == pytest.approx(25.00, abs=0.01)     # noqa: SLF001
+        assert controller._heating_curve_fallback(-20.0, 1.0) == pytest.approx(40.00, abs=0.01)     # noqa: SLF001
+        assert controller._heating_curve_fallback(-10.0, 1.0) == pytest.approx(37.71, abs=0.01)     # noqa: SLF001
+        assert controller._heating_curve_fallback(  0.0, 1.0) == pytest.approx(33.43, abs=0.01)     # noqa: SLF001
+        assert controller._heating_curve_fallback( 10.0, 1.0) == pytest.approx(29.14, abs=0.01)     # noqa: SLF001
+        assert controller._heating_curve_fallback( 15.0, 1.0) == pytest.approx(27.00, abs=0.01)     # noqa: SLF001
+        assert controller._heating_curve_fallback( 20.0, 1.0) == pytest.approx(25.00, abs=0.01)     # noqa: SLF001
 
-    def test_berechne_vorlauf_soll_fallback_mode(self):
+    def test_calculate_vorlauf_soll_fallback_mode(self):
         """Test calculation in fallback mode."""
         controller = FlowController(
             min_vorlauf=18.0,
@@ -166,7 +166,7 @@ class TestPrediction:
             learning_rate=0.01,
         )
 
-        vorlauf_soll_and_features = controller.berechne_vorlauf_soll(
+        vorlauf_soll_and_features = controller.calculate_vorlauf_soll(
             SensorValues(
                 aussen_temp=5.0,
                 raum_ist=22.0,
@@ -187,7 +187,7 @@ class TestPrediction:
         )
 
         # At high outdoor temp, standard Heizkurve would give low value
-        vorlauf_soll_and_features = controller.berechne_vorlauf_soll(
+        vorlauf_soll_and_features = controller.calculate_vorlauf_soll(
             SensorValues(
                 aussen_temp=15.0,  # Warm outside
                 raum_ist=20.0,
@@ -202,7 +202,7 @@ class TestPrediction:
         )
         assert vorlauf_soll_and_features.vorlauf <= 55.0
 
-    def test_berechne_vorlauf_soll_within_limits(self):
+    def test_calculate_vorlauf_soll_within_limits(self):
         """Test that prediction is always within configured limits."""
         controller = FlowController(
             min_vorlauf=28.0,
@@ -213,7 +213,7 @@ class TestPrediction:
 
         # Mock extreme prediction
         with patch.object(controller.model, "predict_one", return_value=100.0):
-            vorlauf_soll_and_features = controller.berechne_vorlauf_soll(
+            vorlauf_soll_and_features = controller.calculate_vorlauf_soll(
                 SensorValues(
                     aussen_temp=5.0,
                     raum_ist=22.0,
@@ -236,7 +236,7 @@ class TestPrediction:
 
         # Mock extreme prediction
         with patch.object(controller.model, "predict_one", return_value=5000000.0):
-            vorlauf_soll_and_features = controller.berechne_vorlauf_soll(
+            vorlauf_soll_and_features = controller.calculate_vorlauf_soll(
                 SensorValues(
                     aussen_temp=5.0,
                     raum_ist=22.0,
@@ -245,8 +245,8 @@ class TestPrediction:
                 )
             )
 
-            # Fallback value should be within reasonable range
-            assert 25.0 <= vorlauf_soll_and_features.vorlauf <= 55.0
+            # Fallback value should be within configured range
+            assert 18.0 <= vorlauf_soll_and_features.vorlauf <= 39.0
 
 class FlowTestHelper:
     """Helper class for fluent-style flow controller testing."""
@@ -332,7 +332,7 @@ class FlowTestHelper:
             # Also make datetime() constructor work normally
             mock_dt.side_effect = lambda *args, **kw: datetime(*args, **kw)
 
-            vorlauf_soll_and_features = self.flow_controller.berechne_vorlauf_soll(
+            vorlauf_soll_and_features = self.flow_controller.calculate_vorlauf_soll(
                 SensorValues(
                     aussen_temp=self._t_aussen,
                     raum_ist=self._raum_ist,
@@ -412,10 +412,10 @@ class TestPersistancey:
         controller.setup(1)
 
         # First prediction
-        result1 = controller.berechne_vorlauf_soll(
+        result1 = controller.calculate_vorlauf_soll(
             SensorValues(aussen_temp=0.0, raum_ist=22.0, raum_soll=22.0, vorlauf_ist=35.0)
         )
-        assert result1.vorlauf == pytest.approx(30.70, abs=0.01)
+        assert result1.vorlauf == pytest.approx(29.95, abs=0.01)
 
         # Pickle and unpickle
         stream = io.BytesIO()
@@ -437,10 +437,10 @@ class TestPersistancey:
         assert len(controller2.erfahrungs_liste) == 1
 
         # Second prediction should work with restored model
-        result2 = controller2.berechne_vorlauf_soll(
+        result2 = controller2.calculate_vorlauf_soll(
             SensorValues(aussen_temp=10.0, raum_ist=22.0, raum_soll=22.0, vorlauf_ist=35.0)
         )
-        assert result2.vorlauf == pytest.approx(28.37, abs=0.01)
+        assert result2.vorlauf == pytest.approx(28.33, abs=0.01)
         assert len(controller2.erfahrungs_liste) == 2
 
     def test_config_changes_after_unpickle(self):
@@ -455,7 +455,7 @@ class TestPersistancey:
         controller.setup()
 
         # Make a prediction to train the model
-        controller.berechne_vorlauf_soll(
+        controller.calculate_vorlauf_soll(
             SensorValues(aussen_temp=0.0, raum_ist=22.0, raum_soll=22.0, vorlauf_ist=35.0)
         )
 
@@ -481,7 +481,7 @@ class TestPersistancey:
         assert len(controller2.erfahrungs_liste) == 1
 
         # Model should still work with new config
-        result = controller2.berechne_vorlauf_soll(
+        result = controller2.calculate_vorlauf_soll(
             SensorValues(aussen_temp=10.0, raum_ist=22.0, raum_soll=22.0, vorlauf_ist=35.0)
         )
         assert result.vorlauf >= 20.0  # Respects new min

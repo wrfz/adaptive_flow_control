@@ -88,7 +88,7 @@ class TestFlowControlNumberPublicAPI:
         number = FlowControlNumber(mock_hass, minimal_config, mock_config_entry)
 
         # Public properties
-        assert number.name == "Heatpump Flow Control Vorlauf Soll"
+        assert number.name == "Adaptive Flow Control Vorlauf Soll"
         assert number.unique_id == f"{DOMAIN}_{mock_config_entry.entry_id}_vorlauf_soll"
         assert number.native_min_value == number._controller.min_vorlauf
         assert number.native_max_value == number._controller.max_vorlauf
@@ -155,7 +155,8 @@ class TestFlowControlNumberLifecycle:
 
         with patch.object(number, "async_get_last_state", return_value=last_state), \
             patch("custom_components.adaptive_flow_control.number.async_track_time_interval") as mock_interval, \
-            patch("custom_components.adaptive_flow_control.number.async_track_state_change_event") as mock_state:
+            patch("custom_components.adaptive_flow_control.number.async_track_state_change_event") as mock_state, \
+            patch.object(number, "_delayed_first_update", return_value=None):
 
             await number.async_added_to_hass()
 
