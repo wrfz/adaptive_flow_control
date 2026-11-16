@@ -148,7 +148,6 @@ class Erfahrung:
     timestamp: datetime
     features: Features
     vorlauf_soll: float
-    raum_ist_vorher: float
     raum_soll: float
     gelernt: bool = False
     # Weight factor for the learning step (1.0 = normal, < 1 = damped,

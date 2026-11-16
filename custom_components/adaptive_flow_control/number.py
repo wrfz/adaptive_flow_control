@@ -305,8 +305,6 @@ class FlowControlNumber(NumberEntity, RestoreEntity):
     def extra_state_attributes(self) -> dict[str, Any]:
         """Return the state attributes."""
 
-        _LOGGER.debug("extra_state_attributes() %s", self._extra_attributes)
-
         return self._extra_attributes
 
     @property
@@ -634,7 +632,7 @@ class FlowControlNumber(NumberEntity, RestoreEntity):
                 ATTR_MODEL_MAE: round(model_statistics.mae, 2),
                 ATTR_LAST_UPDATE: self._last_update.isoformat(),
                 ATTR_NEXT_UPDATE: self._next_update.isoformat(),
-                "history_size": model_statistics.history_size,
+                "aussen_temp_history_size": model_statistics.history_size,
                 "is_heating": current_is_heating,
                 # Cumulative counter from the controller (do not read the
                 # attribute value of our own — it is outdated when written)
@@ -648,12 +646,11 @@ class FlowControlNumber(NumberEntity, RestoreEntity):
 
             # Find the switch via unique_id in the entity registry
             entity_registry = er.async_get(self.hass)
-
-            for entity_id in entity_registry.entities:
-                entry = entity_registry.async_get(entity_id)
-                if entry and entry.unique_id == switch_unique_id:
-                    switch_state = self.hass.states.get(entity_id)
-                    break
+            switch_entity_id = entity_registry.async_get_entity_id(
+                "switch", DOMAIN, switch_unique_id
+            )
+            if switch_entity_id:
+                switch_state = self.hass.states.get(switch_entity_id)
 
             # Fallback: try directly via the constructed entity ID
             if not switch_state:

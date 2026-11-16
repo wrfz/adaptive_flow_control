@@ -20,6 +20,7 @@ from .const import (
     DEFAULT_MIN_THERMISCHE_LEISTUNG,
     DEFAULT_MIN_VORLAUF_HI,
     DEFAULT_SANITY_BAND,
+    DOMAIN,
 )
 from .flow_controller import PICKLE_VERSION, FlowController
 from .model_store import (
@@ -34,7 +35,6 @@ from .model_store import (
 
 _LOGGER = logging.getLogger(__name__)
 
-DOMAIN = "adaptive_flow_control"
 PLATFORMS = ["number", "switch"]
 
 # Custom ConfigEntry type for runtime_data

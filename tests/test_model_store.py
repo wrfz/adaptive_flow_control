@@ -66,7 +66,6 @@ def _baue_controller(
                 wochentag_cos=-1.0,
             ),
             vorlauf_soll=28.5 + 0.1 * i,
-            raum_ist_vorher=22.0,
             raum_soll=22.0,
             gelernt=i % 2 == 0,
         )

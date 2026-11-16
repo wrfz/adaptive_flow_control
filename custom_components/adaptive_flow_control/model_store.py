@@ -17,6 +17,7 @@ from typing import Any
 from river import compose, linear_model, optim, preprocessing, stats, metrics
 from river.utils.vectordict import VectorDict
 
+from .const import DEFAULT_SANITY_BAND
 from .flow_controller import FlowController
 from .types import (
     DateTimeTemperatur,
@@ -57,7 +58,6 @@ def _erfahrung_als_json(erfahrung: Erfahrung) -> dict[str, Any]:
         "timestamp": erfahrung.timestamp.isoformat(),
         "features": erfahrung.features.to_dict(),
         "vorlauf_soll": erfahrung.vorlauf_soll,
-        "raum_ist_vorher": erfahrung.raum_ist_vorher,
         "raum_soll": erfahrung.raum_soll,
         "gelernt": erfahrung.gelernt,
         "gewicht_faktor": erfahrung.gewicht_faktor,
@@ -71,7 +71,6 @@ def _erfahrung_aus_json(data: dict[str, Any]) -> Erfahrung:
         timestamp=datetime.fromisoformat(data["timestamp"]),
         features=Features(**{k: data["features"][k] for k in FEATURE_KEYS}),
         vorlauf_soll=float(data["vorlauf_soll"]),
-        raum_ist_vorher=float(data["raum_ist_vorher"]),
         raum_soll=float(data["raum_soll"]),
         gelernt=bool(data["gelernt"]),
         # Snapshots before the factor field do not have it: default 1.0
@@ -134,7 +133,7 @@ def snapshot_to_controller(
     learning_rate: float,
     min_thermische_leistung: float = 0.6,
     max_thermische_leistung: float = 6.0,
-    sanity_band: float = 5.0,
+    sanity_band: float = DEFAULT_SANITY_BAND,
 ) -> FlowController:
     """Rebuilds a FlowController from a snapshot.
 

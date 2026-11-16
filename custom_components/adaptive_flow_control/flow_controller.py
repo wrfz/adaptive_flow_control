@@ -511,6 +511,12 @@ class FlowController:
                     sample_weight=korrigierter_vorlauf_weight.weight,
                 )
 
+                # Track prediction error for the model_mae attribute
+                self.metric.update(
+                    korrigierter_vorlauf_weight.vorlauf_soll,
+                    erfahrung.vorlauf_soll,
+                )
+
                 erfahrung.gelernt = True
                 stats["gelernt"] += 1
 
@@ -614,7 +620,6 @@ class FlowController:
             timestamp=datetime.now(),
             features=features,
             vorlauf_soll=vorlauf_soll,
-            raum_ist_vorher=sensor_values.raum_ist,
             raum_soll=sensor_values.raum_soll,
             gelernt=False,
             gewicht_faktor=gewicht_faktor,
