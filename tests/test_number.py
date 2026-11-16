@@ -3,7 +3,7 @@
 import asyncio
 from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
-from custom_components.heatpump_flow_control.const import (
+from custom_components.adaptive_flow_control.const import (
     CONF_AUSSEN_TEMP_SENSOR,
     CONF_IS_HEATING_ENTITY,
     CONF_LEARNING_RATE,
@@ -15,11 +15,11 @@ from custom_components.heatpump_flow_control.const import (
     CONF_VORLAUF_IST_SENSOR,
     CONF_VORLAUF_SOLL_ENTITY,
 )
-from custom_components.heatpump_flow_control.flow_controller import (
+from custom_components.adaptive_flow_control.flow_controller import (
     Features,
     FlowController,
 )
-from custom_components.heatpump_flow_control.number import (
+from custom_components.adaptive_flow_control.number import (
     FlowControlNumber,
     SensorValues,
     VorlaufSollAndFeatures,

@@ -5,7 +5,7 @@ from __future__ import annotations
 from copy import replace
 from dataclasses import dataclass
 
-from custom_components.heatpump_flow_control.flow_controller import (
+from custom_components.adaptive_flow_control.flow_controller import (
     FlowController,
     SensorValues,
 )

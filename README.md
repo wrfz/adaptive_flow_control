@@ -23,7 +23,7 @@ Flow ACTUAL ───┘                                        ▼
                                       step limit, sanity band)
                                                        │
                                                        ▼
-                                      number.heatpump_flow_control_vorlauf_soll
+                                      number.adaptive_flow_control_vorlauf_soll
                                                        │
                                                        ▼  (via automation/pyscript)
                                       Heat pump supply setpoint
@@ -40,8 +40,8 @@ Flow ACTUAL ───┘                                        ▼
 
 | Entity | Type | Purpose |
 |---|---|---|
-| `number.heatpump_flow_control_vorlauf_soll` | Number | The computed supply setpoint (can be overwritten manually) |
-| `switch.heatpump_flow_control_aktiv` | Switch | Control on/off — off = nothing is written, the model does not learn, all values stay persisted |
+| `number.adaptive_flow_control_vorlauf_soll` | Number | The computed supply setpoint (can be overwritten manually) |
+| `switch.adaptive_flow_control_aktiv` | Switch | Control on/off — off = nothing is written, the model does not learn, all values stay persisted |
 
 ### Update cycle
 
@@ -103,7 +103,7 @@ During the update an **experience** is stored: timestamp, feature vector and the
 
 ### Persistence
 
-- Snapshot: `/config/heatpump_flow_control.model.json` (model, experiences, counters) — saved at the end of every update cycle, when the integration is removed/reloaded, **and** when Home Assistant shuts down (STOP event), so unlearned experiences survive every restart.
+- Snapshot: `/config/adaptive_flow_control.model.json` (model, experiences, counters) — saved at the end of every update cycle, when the integration is removed/reloaded, **and** when Home Assistant shuts down (STOP event), so unlearned experiences survive every restart.
 - On startup the snapshot is loaded automatically (`Model restored from JSON …` in the log). If it does not exist, the model is set up fresh and pre-trained synthetically.
 - Manual intervention: The setpoint can be set directly on the number entity at any time (e.g. during a holiday absence). The next regular cycle resumes control.
 
@@ -205,9 +205,9 @@ The integration only writes its own number entity. Handing the value to the heat
 
 ```yaml
 # pyscript/heat_pump_set_vorlauf_soll_geregelt.py — simplified
-@state_trigger("number.heatpump_flow_control_vorlauf_soll")
+@state_trigger("number.adaptive_flow_control_vorlauf_soll")
 def copy_to_controller():
-    setpoint = number.heatpump_flow_control_vorlauf_soll
+    setpoint = number.adaptive_flow_control_vorlauf_soll
     number.set_value("number.hpsu_can_vorlauf_soll_geregelt", str(setpoint))
 ```
 
@@ -227,7 +227,7 @@ _create_features()
 Model-Prediction: 31.90°C (outdoor: 9.7°C, room-dev: -0.48°C, Vorlauf-Ist: 30.5°C)
 Vorlauf-Soll calculated: 31.5°C (outdoor: 9.7°C, room: 23.0/22.5°C, Vorlauf-Ist: 30.5°C)
 Experience evaluated: dev=…, ✓ Learned from experience from …
-Saving model to /config/heatpump_flow_control.model.json
+Saving model to /config/adaptive_flow_control.model.json
 ```
 
 Warnings to watch for:
@@ -248,10 +248,10 @@ Warnings to watch for:
 
 | File | Contents |
 |---|---|
-| `custom_components/heatpump_flow_control/__init__.py` | Setup, restore/snapshot IO |
-| `custom_components/heatpump_flow_control/flow_controller.py` | Control core: features, model, heating curve, learning, experiences |
-| `custom_components/heatpump_flow_control/number.py` | Number/switch entities, update cycle, safety chains, attributes |
-| `custom_components/heatpump_flow_control/model_store.py` | JSON persistence |
-| `custom_components/heatpump_flow_control/config_flow.py` | Setup and options dialogs |
-| `custom_components/heatpump_flow_control/const.py` | Constants and defaults |
+| `custom_components/adaptive_flow_control/__init__.py` | Setup, restore/snapshot IO |
+| `custom_components/adaptive_flow_control/flow_controller.py` | Control core: features, model, heating curve, learning, experiences |
+| `custom_components/adaptive_flow_control/number.py` | Number/switch entities, update cycle, safety chains, attributes |
+| `custom_components/adaptive_flow_control/model_store.py` | JSON persistence |
+| `custom_components/adaptive_flow_control/config_flow.py` | Setup and options dialogs |
+| `custom_components/adaptive_flow_control/const.py` | Constants and defaults |
 | `tests/` | Unit tests (`pytest tests/`) |

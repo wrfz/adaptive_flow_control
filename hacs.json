@@ -1,5 +1,5 @@
 {
-    "name": "Heatpump Flow Control",
+    "name": "Adaptive Flow Control",
     "render_readme": true,
     "homeassistant": "2026.11.1"
 }

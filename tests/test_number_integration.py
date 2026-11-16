@@ -6,7 +6,7 @@ Tests the entity behavior as it would be used by Home Assistant.
 
 from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
-from custom_components.heatpump_flow_control.const import (
+from custom_components.adaptive_flow_control.const import (
     CONF_AUSSEN_TEMP_SENSOR,
     CONF_IS_HEATING_ENTITY,
     CONF_LEARNING_RATE,
@@ -19,12 +19,12 @@ from custom_components.heatpump_flow_control.const import (
     CONF_VORLAUF_SOLL_ENTITY,
     DOMAIN,
 )
-from custom_components.heatpump_flow_control.flow_controller import (
+from custom_components.adaptive_flow_control.flow_controller import (
     Features,
     FlowController,
     VorlaufSollAndFeatures,
 )
-from custom_components.heatpump_flow_control.number import FlowControlNumber
+from custom_components.adaptive_flow_control.number import FlowControlNumber
 import pytest
 
 
@@ -154,8 +154,8 @@ class TestFlowControlNumberLifecycle:
         last_state.state = "38.5"
 
         with patch.object(number, "async_get_last_state", return_value=last_state), \
-            patch("custom_components.heatpump_flow_control.number.async_track_time_interval") as mock_interval, \
-            patch("custom_components.heatpump_flow_control.number.async_track_state_change_event") as mock_state:
+            patch("custom_components.adaptive_flow_control.number.async_track_time_interval") as mock_interval, \
+            patch("custom_components.adaptive_flow_control.number.async_track_state_change_event") as mock_state:
 
             await number.async_added_to_hass()
 

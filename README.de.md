@@ -23,7 +23,7 @@ Vorlauf IST ─┘                                        ▼
                                      Schrittweite, Sanity-Band)
                                                       │
                                                       ▼
-                                     number.heatpump_flow_control_vorlauf_soll
+                                     number.adaptive_flow_control_vorlauf_soll
                                                       │
                                                       ▼  (per Automation/pyscript)
                                      VorlaufSoll-Sollwert der WP
@@ -38,8 +38,8 @@ Vorlauf IST ─┘                                        ▼
 
 | Entity | Typ | Zweck |
 |---|---|---|
-| `number.heatpump_flow_control_vorlauf_soll` | Number | Der berechnete Vorlauf-Sollwert (manuell überschreibbar) |
-| `switch.heatpump_flow_control_aktiv` | Switch | Regelung an/aus — aus = es wird nichts geschrieben, das Modell lernt nicht, alle Werte bleiben persistiert |
+| `number.adaptive_flow_control_vorlauf_soll` | Number | Der berechnete Vorlauf-Sollwert (manuell überschreibbar) |
+| `switch.adaptive_flow_control_aktiv` | Switch | Regelung an/aus — aus = es wird nichts geschrieben, das Modell lernt nicht, alle Werte bleiben persistiert |
 
 ### Update-Zyklus
 
@@ -101,7 +101,7 @@ Beim Update wird eine **Erfahrung** gespeichert: Zeitstempel, Feature-Vektor und
 
 ### Persistenz
 
-- Snapshot: `/config/heatpump_flow_control.model.json` (Modell, Erfahrungen, Zähler) — gespeichert am Ende jedes Update-Zyklus, bei Entfernen/Neuladen der Integration **und** beim Herunterfahren von Home Assistant (STOP-Event), damit ungelernte Erfahrungen jeden Restart überleben.
+- Snapshot: `/config/adaptive_flow_control.model.json` (Modell, Erfahrungen, Zähler) — gespeichert am Ende jedes Update-Zyklus, bei Entfernen/Neuladen der Integration **und** beim Herunterfahren von Home Assistant (STOP-Event), damit ungelernte Erfahrungen jeden Restart überleben.
 - Beim Start wird der Snapshot automatisch geladen (`Model restored from JSON …` im Log). Existiert er nicht, wird das Modell frisch aufgesetzt und synthetisch vortrainiert.
 - Manuelle Eingriffe: Der Sollwert kann jederzeit direkt auf der Number-Entity gesetzt werden (z. B. bei Urlaubsabwesenheit). Der nächste reguläre Zyklus übernimmt die Regelung wieder.
 
@@ -203,9 +203,9 @@ Die Integration schreibt nur ihre eigene Number-Entity. Die Weitergabe an den WP
 
 ```yaml
 # pyscript/heat_pump_set_vorlauf_soll_geregelt.py — vereinfacht
-@state_trigger("number.heatpump_flow_control_vorlauf_soll")
+@state_trigger("number.adaptive_flow_control_vorlauf_soll")
 def copy_to_regler():
-    soll = number.heatpump_flow_control_vorlauf_soll
+    soll = number.adaptive_flow_control_vorlauf_soll
     number.set_value("number.hpsu_can_vorlauf_soll_geregelt", str(soll))
 ```
 
@@ -225,7 +225,7 @@ _create_features()
 Model-Prediction: 31.90°C (outdoor: 9.7°C, room-dev: -0.48°C, Vorlauf-Ist: 30.5°C)
 Vorlauf-Soll calculated: 31.5°C (outdoor: 9.7°C, room: 23.0/22.5°C, Vorlauf-Ist: 30.5°C)
 Experience evaluated: dev=…, ✓ Learned from experience from …
-Saving model to /config/heatpump_flow_control.model.json
+Saving model to /config/adaptive_flow_control.model.json
 ```
 
 Warnungen, auf die man achten sollte:
@@ -244,10 +244,10 @@ Warnungen, auf die man achten sollte:
 
 | Datei | Inhalt |
 |---|---|
-| `custom_components/heatpump_flow_control/__init__.py` | Setup, Restore/Snapshot-IO |
-| `custom_components/heatpump_flow_control/flow_controller.py` | Regelkern: Features, Modell, Heizkurve, Lernen, Erfahrungen |
-| `custom_components/heatpump_flow_control/number.py` | Number/Switch-Entities, Update-Zyklus, Sicherheitsketten, Attribute |
-| `custom_components/heatpump_flow_control/model_store.py` | JSON-Persistenz |
-| `custom_components/heatpump_flow_control/config_flow.py` | Einrichtungs- und Optionsdialog |
-| `custom_components/heatpump_flow_control/const.py` | Konstanten und Defaults |
+| `custom_components/adaptive_flow_control/__init__.py` | Setup, Restore/Snapshot-IO |
+| `custom_components/adaptive_flow_control/flow_controller.py` | Regelkern: Features, Modell, Heizkurve, Lernen, Erfahrungen |
+| `custom_components/adaptive_flow_control/number.py` | Number/Switch-Entities, Update-Zyklus, Sicherheitsketten, Attribute |
+| `custom_components/adaptive_flow_control/model_store.py` | JSON-Persistenz |
+| `custom_components/adaptive_flow_control/config_flow.py` | Einrichtungs- und Optionsdialog |
+| `custom_components/adaptive_flow_control/const.py` | Konstanten und Defaults |
 | `tests/` | Unit-Tests (`pytest tests/`) |

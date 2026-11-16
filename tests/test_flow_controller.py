@@ -6,7 +6,7 @@ import pickle
 import random
 from unittest.mock import patch
 
-from custom_components.heatpump_flow_control.flow_controller import (
+from custom_components.adaptive_flow_control.flow_controller import (
     DateTimeTemperatur,
     FlowController,
     HistoryBuffer,
@@ -326,7 +326,7 @@ class FlowTestHelper:
 
         # Mock datetime.now() to return simulated time
         with patch(
-            "custom_components.heatpump_flow_control.flow_controller.datetime"
+            "custom_components.adaptive_flow_control.flow_controller.datetime"
         ) as mock_dt:
             mock_dt.now.return_value = self._simulated_datetime
             # Also make datetime() constructor work normally

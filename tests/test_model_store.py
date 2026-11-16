@@ -5,15 +5,15 @@ import json
 
 import pytest
 
-from custom_components.heatpump_flow_control.flow_controller import FlowController
-from custom_components.heatpump_flow_control.model_store import (
+from custom_components.adaptive_flow_control.flow_controller import FlowController
+from custom_components.adaptive_flow_control.model_store import (
     MODEL_SCHEMA_VERSION,
     controller_to_snapshot,
     lade_snapshot,
     snapshot_to_controller,
     speichere_snapshot,
 )
-from custom_components.heatpump_flow_control.types import (
+from custom_components.adaptive_flow_control.types import (
     DateTimeTemperatur,
     Erfahrung,
     Features,
