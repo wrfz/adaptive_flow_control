@@ -16,6 +16,7 @@ CONF_MIN_THERMISCHE_LEISTUNG = "min_thermische_leistung"
 CONF_MAX_THERMISCHE_LEISTUNG = "max_thermische_leistung"
 CONF_UPDATE_INTERVAL = "update_interval"
 CONF_LEARNING_RATE = "learning_rate"
+CONF_HYSTERESE = "hysterese"
 
 # Defaults
 DEFAULT_MIN_VORLAUF_LO = 25.0
@@ -24,6 +25,10 @@ DEFAULT_MAX_VORLAUF_LO = 35.0
 DEFAULT_MAX_VORLAUF_HI = 55.0
 DEFAULT_UPDATE_INTERVAL = 60  # Minuten
 DEFAULT_LEARNING_RATE = 0.03
+DEFAULT_HYSTERESE = 3.0
+# Sicherheitsabstand zusätzlich zur Hysterese, damit der Wert nach dem
+# Runden von Tv/Soll nicht unter der Schaltregel landet.
+HYSTERESE_MARGIN = 0.5
 DEFAULT_MIN_THERMISCHE_LEISTUNG = 0.6  # kW
 DEFAULT_MAX_THERMISCHE_LEISTUNG = 6.0  # kW
 

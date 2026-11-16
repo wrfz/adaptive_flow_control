@@ -34,16 +34,19 @@ from .const import (
     ATTR_VORLAUF_IST,
     CONF_AUSSEN_TEMP_SENSOR,
     CONF_IS_HEATING_ENTITY,
+    CONF_HYSTERESE,
     CONF_RAUM_IST_SENSOR,
     CONF_RAUM_SOLL_SENSOR,
     CONF_THERMISCHE_LEISTUNG_SENSOR,
     CONF_UPDATE_INTERVAL,
     CONF_VORLAUF_IST_SENSOR,
     CONF_VORLAUF_SOLL_ENTITY,
+    DEFAULT_HYSTERESE,
     DEFAULT_UPDATE_INTERVAL,
     DOMAIN,
 )
 from .types import SensorValues, VorlaufSollAndFeatures
+from .const import HYSTERESE_MARGIN  # noqa: E402
 
 # pylint: disable=hass-logger-capital, hass-logger-period
 # ruff: noqa: BLE001
@@ -66,6 +69,29 @@ async def async_setup_entry(
     )
 
     async_add_entities([number], True)
+
+
+def klemme_vorlauf_soll(
+    vorlauf: float,
+    sensor_values: SensorValues,
+    hysterese: float,
+    max_vorlauf: float,
+) -> float:
+    """Klemme den Vorhersage-Wert auf die HPSU-Schaltregel.
+
+    Die HPSU startet erst, wenn VorlaufSoll >= Tv + 3 K, und stoppt,
+    wenn Tv >= VorlaufSoll + 3 K. Bei Heizbedarf (raum_ist < raum_soll)
+    landet eine Vorhersage nahe der aktuellen Tv in der toten Zone und
+    die WP zykelt bzw. startet nie — daher klemmen wir auf mindestens
+    Tv + Hysterese + Margin.
+    """
+    if sensor_values.raum_ist >= sensor_values.raum_soll:
+        return vorlauf
+
+    min_vorlauf = sensor_values.vorlauf_ist + hysterese + HYSTERESE_MARGIN
+    if vorlauf < min_vorlauf:
+        return min(min_vorlauf, max_vorlauf)
+    return vorlauf
 
 
 class FlowControlNumber(NumberEntity, RestoreEntity):
@@ -101,6 +127,7 @@ class FlowControlNumber(NumberEntity, RestoreEntity):
         self._update_interval_minutes = config.get(
             CONF_UPDATE_INTERVAL, DEFAULT_UPDATE_INTERVAL
         )
+        self._hysterese = config.get(CONF_HYSTERESE, DEFAULT_HYSTERESE)
 
         # State
         self._attr_native_value = None
@@ -416,11 +443,26 @@ class FlowControlNumber(NumberEntity, RestoreEntity):
                 sensor_values,
             )
 
+            # HPSU-Schaltregel: siehe klemme_vorlauf_soll()
+            vorlauf_soll_effektiv = klemme_vorlauf_soll(
+                vorlauf_soll_and_features.vorlauf,
+                sensor_values,
+                self._hysterese,
+                self._controller.max_vorlauf,
+            )
+            if vorlauf_soll_effektiv != vorlauf_soll_and_features.vorlauf:
+                _LOGGER.info(
+                    "Heizbedarf, Vorhersage %.1f°C in toter Zone (< Tv+%.1fK): geklemmt auf %.1f°C",
+                    vorlauf_soll_and_features.vorlauf,
+                    self._hysterese,
+                    vorlauf_soll_effektiv,
+                )
+
             # Track successful prediction time
             self._last_prediction_time = dt_util.now()
 
             # Update state
-            self._attr_native_value = round(vorlauf_soll_and_features.vorlauf, 1)
+            self._attr_native_value = round(vorlauf_soll_effektiv, 1)
             self._last_update = dt_util.now()
             self._next_update = self._last_update + timedelta(
                 minutes=self._update_interval_minutes
@@ -483,7 +525,7 @@ class FlowControlNumber(NumberEntity, RestoreEntity):
             )
 
             if switch_state and switch_state.state == "on":
-                await self._async_set_vorlauf_soll(vorlauf_soll_and_features.vorlauf)
+                await self._async_set_vorlauf_soll(vorlauf_soll_effektiv)
                 _LOGGER.info("Control enabled, sending Vorlauf-Soll to heat pump")
             else:
                 _LOGGER.info("Control disabled by switch, not sending Vorlauf-Soll")
@@ -492,7 +534,7 @@ class FlowControlNumber(NumberEntity, RestoreEntity):
 
             _LOGGER.info(
                 "Vorlauf-Soll updated: %.1f°C (Außen: %.1f°C, Raum: %.1f/%.1f°C)",
-                vorlauf_soll_and_features.vorlauf,
+                vorlauf_soll_effektiv,
                 sensor_values.aussen_temp,
                 sensor_values.raum_ist,
                 sensor_values.raum_soll,

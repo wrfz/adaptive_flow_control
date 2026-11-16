@@ -20,6 +20,12 @@ from .const import (
     DEFAULT_MIN_VORLAUF_HI,
 )
 from .flow_controller import PICKLE_VERSION, FlowController
+from .model_store import (
+    controller_to_snapshot,
+    lade_snapshot,
+    snapshot_to_controller,
+    speichere_snapshot,
+)
 
 # pylint: disable=hass-logger-capital, hass-logger-period
 # ruff: logging-redundant-exc-info
@@ -71,52 +77,86 @@ async def _async_load_or_create_controller(
     min_thermische_leistung = entry.data.get(CONF_MIN_THERMISCHE_LEISTUNG, DEFAULT_MIN_THERMISCHE_LEISTUNG)
     max_thermische_leistung = entry.data.get(CONF_MAX_THERMISCHE_LEISTUNG, DEFAULT_MAX_THERMISCHE_LEISTUNG)
 
-    # Model file path
-    model_file_name = f"{DOMAIN}.model.pkl"
-    model_path = Path(hass.config.path(model_file_name))
+    # Model file paths: JSON-Snapshot (neu) und Legacy-Pickle (Migration)
+    json_file_name = f"{DOMAIN}.model.json"
+    json_path = Path(hass.config.path(json_file_name))
+    pkl_file_name = f"{DOMAIN}.model.pkl"
+    pkl_path = Path(hass.config.path(pkl_file_name))
 
-    def _load() -> FlowController | None:
-        """Load model from disk."""
-        _LOGGER.info("Loading model from %s", model_path)
+    def _lade_pkl() -> FlowController | None:
+        """Lädt den Legacy-Pickle und migriert ihn nach JSON."""
 
-        if not model_path.exists():
-            _LOGGER.info("No saved model found, starting fresh")
+        if not pkl_path.exists():
             return None
 
         try:
-            with model_path.open("rb") as f:
+            with pkl_path.open("rb") as f:
                 loaded = pickle.load(f)
 
-                # Check pickle version for migration
-                loaded_version = getattr(loaded, "pickle_version", 1)
-                if loaded_version < PICKLE_VERSION:
-                    _LOGGER.warning(
-                        "Model version mismatch (loaded: %d, current: %d). "
-                        "Starting fresh to ensure compatibility.",
-                        loaded_version,
-                        PICKLE_VERSION,
-                    )
-                    return None
-
-                # Migration code for missing attributes (if version matches)
-                if not hasattr(loaded, "use_fallback"):
-                    _LOGGER.info("Migrating: Adding use_fallback attribute")
-                    loaded.use_fallback = False
-
-                # Legacy patches for old models
-                loaded.use_fallback = False
-                loaded.min_predictions_for_model = 0
-
-                _LOGGER.info(
-                    "Model loaded successfully (version %d)",
+            # Check pickle version for migration
+            loaded_version = getattr(loaded, "pickle_version", 1)
+            if loaded_version < PICKLE_VERSION:
+                _LOGGER.warning(
+                    "Legacy-Model version mismatch (loaded: %d, current: %d). "
+                    "Starting fresh to ensure compatibility.",
                     loaded_version,
+                    PICKLE_VERSION,
                 )
-                return loaded
+                return None
+
+            # Legacy patches for old models
+            loaded.use_fallback = False
+            loaded.min_predictions_for_model = 0
+
+            _LOGGER.info("Legacy model loaded successfully (version %d)", loaded_version)
+
+            # Migration: als JSON-Snapshot speichern
+            try:
+                speichere_snapshot(controller_to_snapshot(loaded), json_path)
+                _LOGGER.info("Migrated legacy model to %s", json_path)
+            except (KeyError, TypeError, ValueError) as mig_err:
+                _LOGGER.warning(
+                    "Legacy model loaded but not migrated to JSON: %s. "
+                    "It will be re-migrated on the next save.",
+                    mig_err,
+                )
+            return loaded
         except (pickle.UnpicklingError, EOFError, AttributeError) as err:
             _LOGGER.error(
-                "Cannot load model (incompatible format or missing attributes): %s. "
+                "Cannot load legacy model (incompatible format or missing attributes): %s. "
                 "Starting fresh.",
                 err,
+            )
+            return None
+
+    def _load() -> FlowController | None:
+        """Load model from JSON snapshot (fallback: legacy pickle)."""
+        _LOGGER.info("Loading model from %s", json_path)
+
+        snapshot = lade_snapshot(json_path)
+        if snapshot is None:
+            _LOGGER.info("No saved model found, trying legacy pickle")
+            return _lade_pkl()
+
+        try:
+            controller = snapshot_to_controller(
+                snapshot,
+                min_vorlauf=min_vorlauf,
+                max_vorlauf=max_vorlauf,
+                learning_rate=learning_rate,
+                min_thermische_leistung=min_thermische_leistung,
+                max_thermische_leistung=max_thermische_leistung,
+            )
+            _LOGGER.info(
+                "Model restored from JSON (schema %s, %d Erfahrungen, %d history)",
+                snapshot.get("schema_version"),
+                len(controller.erfahrungs_liste),
+                len(controller.aussen_temp_history),
+            )
+            return controller
+        except (KeyError, TypeError, ValueError) as err:
+            _LOGGER.error(
+                "Cannot restore model from snapshot: %s. Starting fresh.", err
             )
             return None
 
@@ -154,17 +194,22 @@ async def async_save_controller(
 ) -> None:
     """Save controller to disk."""
 
-    model_file_name = f"{DOMAIN}.model.pkl"
-    model_path = Path(hass.config.path(model_file_name))
+    json_file_name = f"{DOMAIN}.model.json"
+    json_path = Path(hass.config.path(json_file_name))
+    pkl_file_name = f"{DOMAIN}.model.pkl"
+    pkl_path = Path(hass.config.path(pkl_file_name))
 
     def _save():
         """Save model to disk."""
         try:
-            model_path.parent.mkdir(parents=True, exist_ok=True)
+            json_path.parent.mkdir(parents=True, exist_ok=True)
+            _LOGGER.debug("Saving model to %s", json_path)
+            speichere_snapshot(controller_to_snapshot(controller), json_path)
 
-            with model_path.open("wb") as f:
-                _LOGGER.debug("Saving model to %s", model_path)
-                pickle.dump(controller, f)
+            # Legacy-Pickle entfernen, sobald das JSON-Snapshot vorhanden ist
+            if pkl_path.exists():
+                pkl_path.unlink()
+                _LOGGER.info("Removed legacy model file %s", pkl_path)
         except Exception as err:  # noqa: BLE001
             _LOGGER.error("Error saving model: %s", err)
 

@@ -13,6 +13,7 @@ from .const import (
     DEFAULT_MAX_THERMISCHE_LEISTUNG,
     DEFAULT_MAX_VORLAUF_HI,
     DEFAULT_MAX_VORLAUF_LO,
+    DEFAULT_HYSTERESE,
     DEFAULT_MIN_THERMISCHE_LEISTUNG,
     DEFAULT_MIN_VORLAUF_HI,
     DEFAULT_MIN_VORLAUF_LO,
@@ -118,6 +119,17 @@ def get_config_schema(defaults=None):
             ): selector.NumberSelector(
                 selector.NumberSelectorConfig(
                     min=0.001, max=0.1, step=0.001, mode=NumberSelectorMode.BOX
+                )
+            ),
+            vol.Optional(
+                "hysterese", default=defaults.get("hysterese", DEFAULT_HYSTERESE)
+            ): selector.NumberSelector(
+                selector.NumberSelectorConfig(
+                    min=0.0,
+                    max=10.0,
+                    step=0.1,
+                    mode=NumberSelectorMode.BOX,
+                    unit_of_measurement="K",
                 )
             ),
         }
