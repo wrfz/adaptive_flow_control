@@ -151,6 +151,9 @@ class Erfahrung:
     raum_ist_vorher: float
     raum_soll: float
     gelernt: bool = False
+    # Gewichts-Faktor für den Lern-Schritt (1.0 = normal, < 1 = gedämpft,
+    # z. B. Erfahrungen aus raum_soll-getriggerten Sofort-Zyklen).
+    gewicht_faktor: float = 1.0
 
 @dataclass
 class VorlaufSollWeight:

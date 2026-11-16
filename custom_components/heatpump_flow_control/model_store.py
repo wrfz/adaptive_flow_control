@@ -60,6 +60,7 @@ def _erfahrung_als_json(erfahrung: Erfahrung) -> dict[str, Any]:
         "raum_ist_vorher": erfahrung.raum_ist_vorher,
         "raum_soll": erfahrung.raum_soll,
         "gelernt": erfahrung.gelernt,
+        "gewicht_faktor": erfahrung.gewicht_faktor,
     }
 
 
@@ -73,6 +74,8 @@ def _erfahrung_aus_json(data: dict[str, Any]) -> Erfahrung:
         raum_ist_vorher=float(data["raum_ist_vorher"]),
         raum_soll=float(data["raum_soll"]),
         gelernt=bool(data["gelernt"]),
+        # Snapshots vor dem Faktor-Feld haben es nicht: Standard 1.0
+        gewicht_faktor=float(data.get("gewicht_faktor", 1.0)),
     )
 
 

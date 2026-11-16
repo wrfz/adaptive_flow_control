@@ -433,6 +433,16 @@ class FlowController:
         korrektur_faktor *= recency
         weight *= recency
 
+        # Gewichts-Faktor der Erfahrung (z. B. 0.3 für raum_soll-getriggerte
+        # Sofort-Zyklen): dämpft nur das Lerngewicht, nie die Korrektur.
+        if erfahrung.gewicht_faktor != 1.0:
+            weight *= erfahrung.gewicht_faktor
+            _LOGGER.debug(
+                "Gewichtsfaktor %.2f angewendet (Gewicht=%.2f)",
+                erfahrung.gewicht_faktor,
+                weight,
+            )
+
         korrigierter_vorlauf = erfahrung.vorlauf_soll + abweichung * korrektur_faktor
 
         # Begrenze auf physikalisch möglichen Bereich
@@ -543,11 +553,15 @@ class FlowController:
     def berechne_vorlauf_soll(
         self,
         sensor_values: SensorValues,
+        gewicht_faktor: float = 1.0,
     ) -> VorlaufSollAndFeatures:
         """Berechnet Vorlauf-Soll basierend auf Model und Features.
 
         Args:
             sensor_values: Sensorwerte für die Berechnung
+            gewicht_faktor: Lerngewicht-Faktor der neuen Erfahrung
+                (1.0 = normal, < 1 = gedämpft, z. B. Sofort-Zyklen nach
+                raum_soll-Änderung)
 
         Returns:
             VorlaufSollAndFeatures: Vorlauf-Soll und zugehörige Features
@@ -604,6 +618,7 @@ class FlowController:
             raum_ist_vorher=sensor_values.raum_ist,
             raum_soll=sensor_values.raum_soll,
             gelernt=False,
+            gewicht_faktor=gewicht_faktor,
         )
         self.erfahrungs_liste.append(erfahrung)
 

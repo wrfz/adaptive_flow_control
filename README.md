@@ -55,6 +55,8 @@ While an update runs, a parallel incoming update is skipped (lock).
 
 **Instant update on target-value change:** In addition to the hourly timer, the integration reacts to changes of the `raum_soll` sensor — debounced by 60 seconds so that slider dragging or schedule changes do not trigger a chain of cycles. After the debounce, a full control cycle runs with all gates and safety chains; the heat pump then does not have to wait up to an hour for the new setting. (`raum_ist` changes deliberately do not trigger — they change constantly and would flood learning with redundancy.)
 
+**Damped learning weight for instant cycles:** A target-value change carries the same information as a single change to the mean of the individual values — multiple cycles within a short time must not therefore reinforce the model N-fold. Experiences from raum_soll-triggered instant cycles learn with only 30 % learning weight (`RAUM_SOLL_TRIGGER_GEWICHT`); hourly cycles keep full weight. The target correction (reward) is untouched — only the learning weight is damped.
+
 ### Feature vector
 
 Per cycle the model sees:

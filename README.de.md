@@ -53,6 +53,8 @@ Läuft ein Update, wird ein parallel anlaufendes Update übersprungen (Lock).
 
 **Sofort-Update bei Sollwert-Änderung:** Zusätzlich zum Stundentimer reagiert die Integration auf Änderungen des `raum_soll`-Sensors — entprellt mit 60 Sekunden, damit Slider-Ziehen oder Zeitplan-Änderungen nicht eine Kette von Zyklen auslösen. Nach dem Entprellen läuft ein voller Regelzyklus mit allen Gates und Sicherheitsketten; die Wärmepumpe muss dann nicht bis zu einer Stunde auf die neue Einstellung warten. (`raum_ist`-Änderungen triggern bewusst nicht — die ändern sich laufend und würden das Lernen mit Redundanz fluten.)
 
+**Gedämpftes Lerngewicht für Sofort-Zyklen:** Eine Sollwert-Änderung enthält dieselbe Information wie eine einzelne Verstellung auf den Mittelwert — mehrfache Zyklen innerhalb kurzer Zeit dürften das Modell also nicht N-fach verstärken. Erfahrungen aus raum_soll-getriggerten Sofort-Zyklen lernen deshalb nur mit 30 % Lerngewicht (`RAUM_SOLL_TRIGGER_GEWICHT`); Stundencyklen behalten volles Gewicht. Die Zielkorrektur (Reward) bleibt unangetastet, nur das Lerngewicht wird gedämpft.
+
 ### Feature-Vektor
 
 Das Modell sieht pro Zyklus:

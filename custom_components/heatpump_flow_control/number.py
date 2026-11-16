@@ -48,6 +48,7 @@ from .const import (
     DEFAULT_UPDATE_INTERVAL,
     DOMAIN,
     RAUM_SOLL_DEBOUNCE_SECONDS,
+    RAUM_SOLL_TRIGGER_GEWICHT,
 )
 from .types import SensorValues, VorlaufSollAndFeatures
 from .const import HYSTERESE_MARGIN  # noqa: E402
@@ -370,7 +371,11 @@ class FlowControlNumber(NumberEntity, RestoreEntity):
                 "raum_soll-Änderung: sofortiges Update (entprellt %ds)",
                 RAUM_SOLL_DEBOUNCE_SECONDS,
             )
-            await self._async_update_vorlauf_soll()
+            # Erfahrung dieses Sofort-Zyklus lernt gedämpft: eine Sollwert-
+            # Änderung enthält dieselbe Information wie eine einzelne
+            # Verstellung, mehrfache Zyklen dürfen das Modell nicht
+            # N-fach verstärken.
+            await self._async_update_vorlauf_soll(durch_sollweechsel=True)
 
         self._raum_soll_debounce_unsub = async_call_later(
             self.hass, RAUM_SOLL_DEBOUNCE_SECONDS, _debounced_update
@@ -490,7 +495,9 @@ class FlowControlNumber(NumberEntity, RestoreEntity):
                 thermische_leistung=thermische_leistung,
             )
 
-    async def _async_update_vorlauf_soll(self, now=None) -> None:
+    async def _async_update_vorlauf_soll(
+        self, now=None, durch_sollweechsel: bool = False
+    ) -> None:
         """Update the Vorlauf-Soll value."""
 
         # Überspringe parallele Aufrufe: ein laufender Update-Zyklus
@@ -499,9 +506,11 @@ class FlowControlNumber(NumberEntity, RestoreEntity):
             _LOGGER.debug("Update already in progress - skipping")
             return
         async with self._update_lock:
-            await self._async_update_vorlauf_soll_locked(now)
+            await self._async_update_vorlauf_soll_locked(now, durch_sollweechsel)
 
-    async def _async_update_vorlauf_soll_locked(self, now=None) -> None:
+    async def _async_update_vorlauf_soll_locked(
+        self, now=None, durch_sollweechsel: bool = False
+    ) -> None:
         """Update the Vorlauf-Soll value (serialized by _update_lock)."""
 
         is_heating = await self._is_heating_mode()
@@ -534,10 +543,16 @@ class FlowControlNumber(NumberEntity, RestoreEntity):
                 self.async_write_ha_state()
                 return
 
-            # Berechne neuen Vorlauf-Soll
+            # Berechne neuen Vorlauf-Soll. Erfahrungen aus raum_soll-
+            # getriggerten Sofort-Zyklen lernen gedämpft (Faktor < 1),
+            # Stundencyklen mit vollem Gewicht.
+            gewicht_faktor = (
+                RAUM_SOLL_TRIGGER_GEWICHT if durch_sollweechsel else 1.0
+            )
             vorlauf_soll_and_features: VorlaufSollAndFeatures = await self.hass.async_add_executor_job(
                 self._controller.berechne_vorlauf_soll,
                 sensor_values,
+                gewicht_faktor,
             )
 
             # 1. Schrittweitenlimit: bändigt nur den MODELLwert (Schutz vor

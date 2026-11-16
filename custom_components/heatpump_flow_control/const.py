@@ -51,6 +51,13 @@ DEFAULT_MAX_THERMISCHE_LEISTUNG = 6.0  # kW
 # Zyklus mit neuer Erfahrung auslösen.
 RAUM_SOLL_DEBOUNCE_SECONDS = 60
 
+# Lerngewicht-Faktor für Erfahrungen aus raum_soll-getriggerten Zyklen.
+# Eine Sollwert-Änderung enthält dieselbe Information wie eine einzelne
+# Verstellung auf den Mittelwert — mehrfache Zyklen innerhalb kurzer Zeit
+# würden sonst N-fach verstärkt ins Modell ziehen (jede Erfahrung ist ein
+# voller Lern-Schritt). Faktor < 1 dämpft das; Stundencyklen bleiben bei 1.0.
+RAUM_SOLL_TRIGGER_GEWICHT = 0.3
+
 # Attribute
 ATTR_AUSSEN_TEMP = "aussen_temp"
 ATTR_RAUM_IST = "raum_ist"
