@@ -2,7 +2,7 @@
   "config": {
     "step": {
       "user": {
-        "title": "Setup Heatpump Flow Control",
+        "title": "Setup Adaptive Flow Control",
         "description": "Configure the Machine Learning based control for your air source heat pump.",
         "data": {
           "aussen_temp_sensor": "Outdoor Temperature Sensor",

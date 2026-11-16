@@ -1,4 +1,4 @@
-"""Number platform for Heatpump Flow Control integration."""
+"""Number platform for Adaptive Flow Control integration."""
 import asyncio
 from datetime import timedelta
 import logging
@@ -21,7 +21,7 @@ from homeassistant.helpers.event import (
 from homeassistant.helpers.restore_state import RestoreEntity
 from homeassistant.util import dt as dt_util
 
-from . import HeatpumpFlowControlConfigEntry, async_save_controller
+from . import AdaptiveFlowControlConfigEntry, async_save_controller
 from .common import get_device_info
 from .const import (
     ATTR_AUSSEN_TEMP,
@@ -61,7 +61,7 @@ _LOGGER = logging.getLogger(__name__)
 
 async def async_setup_entry(
     hass: HomeAssistant,
-    config_entry: HeatpumpFlowControlConfigEntry,
+    config_entry: AdaptiveFlowControlConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up the Flow Control number."""
@@ -132,7 +132,7 @@ class FlowControlNumber(NumberEntity, RestoreEntity):
         self,
         hass: HomeAssistant,
         config: Mapping[str, Any],
-        config_entry: HeatpumpFlowControlConfigEntry,
+        config_entry: AdaptiveFlowControlConfigEntry,
     ) -> None:
         """Initialize the number."""
         self.hass = hass
@@ -178,7 +178,7 @@ class FlowControlNumber(NumberEntity, RestoreEntity):
         self._heating_state_listener = None
 
         # Number properties
-        self._attr_name = "Heatpump Flow Control Vorlauf Soll"
+        self._attr_name = "Adaptive Flow Control Vorlauf Soll"
         self._attr_unique_id = f"{DOMAIN}_{config_entry.entry_id}_vorlauf_soll"
         # Get min/max from controller
         self._attr_native_min_value = config_entry.runtime_data.min_vorlauf
@@ -305,7 +305,7 @@ class FlowControlNumber(NumberEntity, RestoreEntity):
     def extra_state_attributes(self) -> dict[str, Any]:
         """Return the state attributes."""
 
-        _LOGGER.info("extra_state_attributes() %s", self._extra_attributes)
+        _LOGGER.debug("extra_state_attributes() %s", self._extra_attributes)
 
         return self._extra_attributes
 
@@ -515,7 +515,7 @@ class FlowControlNumber(NumberEntity, RestoreEntity):
 
         is_heating = await self._is_heating_mode()
 
-        _LOGGER.info("_async_update_vorlauf_soll() controler.enabled: %d, is_heating: %d", self._controller.enabled, is_heating)
+        _LOGGER.info("_async_update_vorlauf_soll() controller.enabled: %d, is_heating: %d", self._controller.enabled, is_heating)
 
         try:
             if not self._controller.enabled:

@@ -1,4 +1,4 @@
-"""Config flow for Heatpump Flow Control integration."""
+"""Config flow for Adaptive Flow Control integration."""
 
 import logging
 
@@ -163,7 +163,7 @@ def get_config_schema(defaults=None):
 
 
 class FlowControlConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
-    """Handle a config flow for Heatpump Flow Control."""
+    """Handle a config flow for Adaptive Flow Control."""
 
     VERSION = 1
 
@@ -174,7 +174,7 @@ class FlowControlConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         if user_input is not None:
             try:
                 return self.async_create_entry(
-                    title="Heat Pump ML Control",
+                    title="Adaptive Flow Control",
                     data=user_input,
                 )
             except Exception as e:  # noqa: BLE001

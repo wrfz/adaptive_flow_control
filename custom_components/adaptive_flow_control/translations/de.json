@@ -2,7 +2,7 @@
   "config": {
     "step": {
       "user": {
-        "title": "Heatpump Flow Control einrichten",
+        "title": "Adaptive Flow Control einrichten",
         "description": "Konfiguriere die Machine Learning basierte Regelung für deine Luftwärmepumpe.",
         "data": {
           "aussen_temp_sensor": "Außentemperatur Sensor",

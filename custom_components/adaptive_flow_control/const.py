@@ -1,6 +1,6 @@
-"""Constants for the Heatpump Flow Control integration."""
+"""Constants for the Adaptive Flow Control integration."""
 
-DOMAIN = "heatpump_flow_control"
+DOMAIN = "adaptive_flow_control"
 
 # Configuration
 CONF_AUSSEN_TEMP_SENSOR = "aussen_temp_sensor"

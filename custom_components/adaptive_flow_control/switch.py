@@ -1,4 +1,4 @@
-"""Switch platform for Heatpump Flow Control integration."""
+"""Switch platform for Adaptive Flow Control integration."""
 
 import logging
 
@@ -7,7 +7,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from homeassistant.helpers.restore_state import RestoreEntity
 
-from . import HeatpumpFlowControlConfigEntry
+from . import AdaptiveFlowControlConfigEntry
 from .common import get_device_info
 from .const import DOMAIN
 
@@ -15,7 +15,7 @@ _LOGGER = logging.getLogger(__name__)
 
 async def async_setup_entry(
     hass: HomeAssistant,
-    entry: HeatpumpFlowControlConfigEntry,
+    entry: AdaptiveFlowControlConfigEntry,
     async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
     """Set up the Flow Control switch."""
@@ -27,12 +27,12 @@ async def async_setup_entry(
 class FlowControlActiveSwitch(SwitchEntity, RestoreEntity):
     """Representation of Flow Control Active Switch."""
 
-    def __init__(self, entry: HeatpumpFlowControlConfigEntry) -> None:
+    def __init__(self, entry: AdaptiveFlowControlConfigEntry) -> None:
         """Initialize the switch."""
         self._entry = entry
 
         # Base attributes
-        self._attr_name = "Heatpump Flow Control Active"
+        self._attr_name = "Adaptive Flow Control Active"
         self._attr_unique_id = f"{DOMAIN}_{entry.entry_id}_aktiv"
         self._attr_is_on = True
         self._attr_icon = "mdi:play-circle"

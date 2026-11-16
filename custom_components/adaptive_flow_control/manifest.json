@@ -1,7 +1,7 @@
 {
-  "domain": "heatpump_flow_control",
-  "name": "Heatpump Flow Control",
-  "documentation": "https://github.com/wrfz/heatpump_flow_control",
+  "domain": "adaptive_flow_control",
+  "name": "Adaptive Flow Control",
+  "documentation": "https://github.com/wrfz/adaptive-flow-control",
   "requirements": ["river==0.27.0"],
   "codeowners": ["@wrfz"],
   "version": "2025.12.4",

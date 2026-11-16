@@ -1,4 +1,4 @@
-"""Heatpump Flow Control integration for Home Assistant."""
+"""Adaptive Flow Control integration for Home Assistant."""
 
 import logging
 from pathlib import Path
@@ -34,23 +34,23 @@ from .model_store import (
 
 _LOGGER = logging.getLogger(__name__)
 
-DOMAIN = "heatpump_flow_control"
+DOMAIN = "adaptive_flow_control"
 PLATFORMS = ["number", "switch"]
 
 # Custom ConfigEntry type for runtime_data
-type HeatpumpFlowControlConfigEntry = ConfigEntry[FlowController]
+type AdaptiveFlowControlConfigEntry = ConfigEntry[FlowController]
 
 
 async def async_setup(hass: HomeAssistant, config: dict) -> bool:
-    """Set up the Heatpump Flow Control component."""
+    """Set up the Adaptive Flow Control component."""
     return True
 
 
 async def async_setup_entry(
     hass: HomeAssistant,
-    entry: HeatpumpFlowControlConfigEntry
+    entry: AdaptiveFlowControlConfigEntry
 ) -> bool:
-    """Set up Heatpump Flow Control from a config entry."""
+    """Set up Adaptive Flow Control from a config entry."""
     _LOGGER.info("async_setup_entry()")
 
     # Load or create FlowController
@@ -223,7 +223,7 @@ async def async_save_controller(
 
 
 async def update_listener(
-    hass: HomeAssistant, entry: HeatpumpFlowControlConfigEntry
+    hass: HomeAssistant, entry: AdaptiveFlowControlConfigEntry
 ) -> None:
     """Handle options update."""
     _LOGGER.info("update_listener()")
@@ -231,7 +231,7 @@ async def update_listener(
 
 
 async def async_unload_entry(
-    hass: HomeAssistant, entry: HeatpumpFlowControlConfigEntry
+    hass: HomeAssistant, entry: AdaptiveFlowControlConfigEntry
 ) -> bool:
     """Unload a config entry."""
     return await hass.config_entries.async_unload_platforms(entry, PLATFORMS)

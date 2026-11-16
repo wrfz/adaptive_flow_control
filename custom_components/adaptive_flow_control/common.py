@@ -1,4 +1,4 @@
-""""Common functions for Heatpump Flow Control integration."""
+""""Common functions for Adaptive Flow Control integration."""
 
 from homeassistant.helpers.device_registry import DeviceInfo
 
@@ -10,7 +10,7 @@ def get_device_info(entry_id: str) -> DeviceInfo:
 
     return DeviceInfo(
         identifiers={(DOMAIN, entry_id)},
-        name="Heatpump Flow Ctron",
+        name="Adaptive Flow Control",
         #manufacturer="Custom Integration",
         model="Flow Controller v1",
     )
