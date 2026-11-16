@@ -89,6 +89,7 @@ class FlowController:
         min_thermische_leistung: float = 0.6,
         max_thermische_leistung: float = 6.0,
         sanity_band: float = DEFAULT_SANITY_BAND,
+        cleanup_tage: int = 30,
     ) -> None:
         """Initialize the flow controller."""
 
@@ -99,6 +100,7 @@ class FlowController:
         self.min_thermische_leistung = min_thermische_leistung
         self.max_thermische_leistung = max_thermische_leistung
         self.sanity_band = sanity_band
+        self.max_age_days = cleanup_tage
         self.pickle_version = PICKLE_VERSION
         self.min_reward_hours = 4.0
         self.short_history_hours = 3.0
@@ -165,6 +167,7 @@ class FlowController:
             "min_thermische_leistung": self.min_thermische_leistung,
             "max_thermische_leistung": self.max_thermische_leistung,
             "sanity_band": self.sanity_band,
+            "max_age_days": self.max_age_days,
             "_enabled": self._enabled,
         }
 
@@ -188,6 +191,7 @@ class FlowController:
         self.min_thermische_leistung = state.get("min_thermische_leistung", 0.6)
         self.max_thermische_leistung = state.get("max_thermische_leistung", 6.0)
         self.sanity_band = state.get("sanity_band", DEFAULT_SANITY_BAND)
+        self.max_age_days = state.get("max_age_days", 30)
         self.min_reward_hours = 4.0
         self.short_history_hours = 3.0
         self.longterm_history_days = 7
@@ -213,6 +217,7 @@ class FlowController:
         min_thermische_leistung: float = 0.6,
         max_thermische_leistung: float = 6.0,
         sanity_band: float = DEFAULT_SANITY_BAND,
+        cleanup_tage: int = 30,
     ) -> None:
         self.min_vorlauf = min_vorlauf
         self.max_vorlauf = max_vorlauf
@@ -221,6 +226,7 @@ class FlowController:
         self.min_thermische_leistung = min_thermische_leistung
         self.max_thermische_leistung = max_thermische_leistung
         self.sanity_band = sanity_band
+        self.max_age_days = cleanup_tage
         self.min_reward_hours = 4.0
         self.short_history_hours = 3.0
         self.longterm_history_days = 7
@@ -415,8 +421,7 @@ class FlowController:
                 _LOGGER.error("Error learning from feature: %s", e)
 
         # Cleanup
-        max_age_days = 7
-        cutoff_cleanup = now - timedelta(days=max_age_days)
+        cutoff_cleanup = now - timedelta(days=self.max_age_days)
         self.erfahrungs_liste = [
             e for e in self.erfahrungs_liste
             if not e.gelernt or e.timestamp > cutoff_cleanup

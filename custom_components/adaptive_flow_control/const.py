@@ -19,6 +19,7 @@ CONF_LEARNING_RATE = "learning_rate"
 CONF_HYSTERESE = "hysterese"
 CONF_MAX_SCHRITTWEITE = "max_schrittweite"
 CONF_SANITY_BAND = "sanity_band"
+CONF_CLEANUP_TAGE = "cleanup_tage"
 
 # Defaults
 DEFAULT_MIN_VORLAUF_LO = 25.0
@@ -42,6 +43,7 @@ DEFAULT_MAX_SCHRITTWEITE = 1.0
 # at cold outdoor temperatures). The erratic jump 28→39 in the night
 # extrapolation case (2026-11-16) was ~14K and still falls within it.
 DEFAULT_SANITY_BAND = 8.0
+DEFAULT_CLEANUP_TAGE = 30  # days to keep experiences
 DEFAULT_MIN_THERMISCHE_LEISTUNG = 0.6  # kW
 DEFAULT_MAX_THERMISCHE_LEISTUNG = 6.0  # kW
 

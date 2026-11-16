@@ -94,6 +94,7 @@ def controller_to_snapshot(controller: FlowController) -> dict[str, Any]:
         },
         "erfahrungen": [_erfahrung_als_json(e) for e in controller.erfahrungs_liste],
         "erfahrungen_gelernt_total": int(controller.erfahrungen_gelernt_total),
+        "max_age_days": int(controller.max_age_days),
         "history": [_temp_als_json(t) for t in controller.aussen_temp_history],
     }
 
@@ -136,6 +137,7 @@ def _migrate_v2_to_v3(snapshot: dict[str, Any], controller: FlowController) -> N
             controller.erfahrungs_liste.append(erf)
 
     controller.erfahrungen_gelernt_total = int(snapshot.get("erfahrungen_gelernt_total", 0))
+    controller.max_age_days = 7  # v2 default
 
     # History
     controller.aussen_temp_history = HistoryBuffer(
@@ -153,6 +155,7 @@ def snapshot_to_controller(
     min_thermische_leistung: float = 0.6,
     max_thermische_leistung: float = 6.0,
     sanity_band: float = DEFAULT_SANITY_BAND,
+    cleanup_tage: int = 30,
 ) -> FlowController:
     schema_version = snapshot.get("schema_version")
     if schema_version not in (2, 3):
@@ -165,6 +168,7 @@ def snapshot_to_controller(
         min_thermische_leistung=min_thermische_leistung,
         max_thermische_leistung=max_thermische_leistung,
         sanity_band=sanity_band,
+        cleanup_tage=cleanup_tage,
     )
 
     if schema_version == 2:
@@ -184,6 +188,7 @@ def snapshot_to_controller(
 
     controller.erfahrungs_liste = [_erfahrung_aus_json(e) for e in snapshot["erfahrungen"]]
     controller.erfahrungen_gelernt_total = int(snapshot.get("erfahrungen_gelernt_total", 0))
+    controller.max_age_days = int(snapshot.get("max_age_days", cleanup_tage))
     controller.aussen_temp_history = HistoryBuffer(
         _temp_aus_json(t) for t in snapshot["history"]
     )

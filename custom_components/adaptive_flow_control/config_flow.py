@@ -18,6 +18,7 @@ from .const import (
     DEFAULT_MIN_THERMISCHE_LEISTUNG,
     DEFAULT_MIN_VORLAUF_HI,
     DEFAULT_MIN_VORLAUF_LO,
+    DEFAULT_CLEANUP_TAGE,
     DEFAULT_SANITY_BAND,
     DOMAIN,
 )
@@ -156,6 +157,18 @@ def get_config_schema(defaults=None):
                     step=0.5,
                     mode=NumberSelectorMode.BOX,
                     unit_of_measurement="K",
+                )
+            ),
+            vol.Optional(
+                "cleanup_tage",
+                default=defaults.get("cleanup_tage", DEFAULT_CLEANUP_TAGE),
+            ): selector.NumberSelector(
+                selector.NumberSelectorConfig(
+                    min=1,
+                    max=365,
+                    step=1,
+                    mode=NumberSelectorMode.BOX,
+                    unit_of_measurement="days",
                 )
             ),
         }
