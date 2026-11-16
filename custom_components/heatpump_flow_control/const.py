@@ -45,6 +45,12 @@ DEFAULT_SANITY_BAND = 8.0
 DEFAULT_MIN_THERMISCHE_LEISTUNG = 0.6  # kW
 DEFAULT_MAX_THERMISCHE_LEISTUNG = 6.0  # kW
 
+# Entprellzeit für das sofortige Update nach raum_soll-Änderung (s).
+# Slider-Ziehen und Zeitplan-Änderungen feuern sonst eine Kette von
+# State-Changes; ohne Wartezeit würde jeder davon einen vollen Regel-
+# Zyklus mit neuer Erfahrung auslösen.
+RAUM_SOLL_DEBOUNCE_SECONDS = 60
+
 # Attribute
 ATTR_AUSSEN_TEMP = "aussen_temp"
 ATTR_RAUM_IST = "raum_ist"

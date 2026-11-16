@@ -5,7 +5,7 @@ import logging
 from typing import Any, cast
 
 from homeassistant.components.number import NumberEntity, NumberMode
-from homeassistant.const import STATE_ON, UnitOfTemperature
+from homeassistant.const import EVENT_HOMEASSISTANT_STOP, STATE_ON, UnitOfTemperature
 from homeassistant.core import HomeAssistant, State, callback
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.entity_platform import (
@@ -14,6 +14,7 @@ from homeassistant.helpers.entity_platform import (
     Mapping,
 )
 from homeassistant.helpers.event import (
+    async_call_later,
     async_track_state_change_event,
     async_track_time_interval,
 )
@@ -46,6 +47,7 @@ from .const import (
     DEFAULT_MAX_SCHRITTWEITE,
     DEFAULT_UPDATE_INTERVAL,
     DOMAIN,
+    RAUM_SOLL_DEBOUNCE_SECONDS,
 )
 from .types import SensorValues, VorlaufSollAndFeatures
 from .const import HYSTERESE_MARGIN  # noqa: E402
@@ -170,6 +172,8 @@ class FlowControlNumber(NumberEntity, RestoreEntity):
         # Listener
         self._update_interval_listener = None
         self._state_change_listener = None
+        self._raum_soll_debounce_unsub = None
+        self._ha_stop_unsub = None
         self._heating_state_listener = None
 
         # Number properties
@@ -235,6 +239,14 @@ class FlowControlNumber(NumberEntity, RestoreEntity):
             self._async_sensor_state_changed,
         )
 
+        # Shutdown-Save: async_will_remove_from_hass feuert bei HA-Shutdown
+        # NICHT (HA entlädt beim Stoppen keine Entities). Das STOP-Event
+        # feuert früh genug im Herunterfahren, damit der Executor-Save noch
+        # anläuft — ungelernte Erfahrungen überleben so jeden Restart.
+        self._ha_stop_unsub = self.hass.bus.async_listen_once(
+            EVENT_HOMEASSISTANT_STOP, self._async_on_ha_stop
+        )
+
         # Setup heating state change listener if configured
         if self._is_heating_entity:
             self._heating_state_listener = async_track_state_change_event(
@@ -274,6 +286,12 @@ class FlowControlNumber(NumberEntity, RestoreEntity):
 
         if self._update_interval_listener:
             self._update_interval_listener()
+        if self._raum_soll_debounce_unsub:
+            self._raum_soll_debounce_unsub()
+            self._raum_soll_debounce_unsub = None
+        if self._ha_stop_unsub:
+            self._ha_stop_unsub()
+            self._ha_stop_unsub = None
         if self._state_change_listener:
             self._state_change_listener()
         if self._heating_state_listener:
@@ -297,6 +315,17 @@ class FlowControlNumber(NumberEntity, RestoreEntity):
 
     # Private methods
 
+    async def _async_on_ha_stop(self, _event) -> None:
+        """Speichert den Model-Snapshot, bevor HA heruntergefahren wird."""
+
+        _LOGGER.info("HA stoppt: Model-Snapshot wird gespeichert")
+        try:
+            await async_save_controller(self.hass, self._config_entry, self._controller)
+        except Exception:
+            _LOGGER.warning(
+                "Model-Snapshot bei HA-Stop nicht gespeichert", exc_info=True
+            )
+
     async def _delayed_first_update(self):
         """First update after startup with delay."""
         await asyncio.sleep(5)
@@ -316,6 +345,36 @@ class FlowControlNumber(NumberEntity, RestoreEntity):
         # Wenn Number noch unavailable ist, prüfe ob jetzt alle verfügbar sind
         if not self._available:
             self._create_task(self._check_and_update_if_ready())
+            return
+
+        # raum_soll-Änderung: sofortiges (entprelltes) Update, damit die
+        # WP nicht bis zum nächsten Stundentermin auf die alte Einstellung
+        # regelt. Nur bei echter Wertänderung, nicht bei Attribut-Refresh.
+        if (
+            new_state.entity_id == self._raum_soll_sensor
+            and event.data.get("old_state") is not None
+            and event.data["old_state"].state != new_state.state
+        ):
+            self._schedule_raum_soll_update()
+
+    @callback
+    def _schedule_raum_soll_update(self) -> None:
+        """Plane ein entprelltes Update nach raum_soll-Änderung."""
+        if self._raum_soll_debounce_unsub:
+            self._raum_soll_debounce_unsub()
+            self._raum_soll_debounce_unsub = None
+
+        async def _debounced_update(_now) -> None:
+            self._raum_soll_debounce_unsub = None
+            _LOGGER.info(
+                "raum_soll-Änderung: sofortiges Update (entprellt %ds)",
+                RAUM_SOLL_DEBOUNCE_SECONDS,
+            )
+            await self._async_update_vorlauf_soll()
+
+        self._raum_soll_debounce_unsub = async_call_later(
+            self.hass, RAUM_SOLL_DEBOUNCE_SECONDS, _debounced_update
+        )
 
     async def _check_and_update_if_ready(self):
         """Check if all sensors are ready and trigger update."""
@@ -481,38 +540,44 @@ class FlowControlNumber(NumberEntity, RestoreEntity):
                 sensor_values,
             )
 
-            # HPSU-Schaltregel: siehe klemme_vorlauf_soll()
-            vorlauf_soll_effektiv = klemme_vorlauf_soll(
-                vorlauf_soll_and_features.vorlauf,
-                sensor_values,
-                self._hysterese,
-                self._controller.max_vorlauf,
-            )
-            if vorlauf_soll_effektiv != vorlauf_soll_and_features.vorlauf:
-                _LOGGER.info(
-                    "Heizbedarf, Vorhersage %.1f°C in toter Zone (< Tv+%.1fK): geklemmt auf %.1f°C",
-                    vorlauf_soll_and_features.vorlauf,
-                    self._hysterese,
-                    vorlauf_soll_effektiv,
-                )
-
-            # Schrittweitenlimit: Keine Sprünge von mehreren Kelvin pro
-            # Update-Zyklus (siehe begrenze_schrittweite).
+            # 1. Schrittweitenlimit: bändigt nur den MODELLwert (Schutz vor
+            # Modell-Sprüngen, siehe begrenze_schrittweite). Läuft VOR der
+            # Totzonen-Klemme, damit die deterministische WP-Startregel
+            # unten nicht gedrosselt wird — sonst startet die WP bei
+            # Heizbedarf erst Stunden später.
             previous_value = (
                 float(self._attr_native_value)
                 if self._attr_native_value is not None
                 else None
             )
-            vorlauf_soll_geliefert = vorlauf_soll_effektiv
             vorlauf_soll_effektiv = begrenze_schrittweite(
-                vorlauf_soll_effektiv, previous_value, self._max_schrittweite
+                vorlauf_soll_and_features.vorlauf, previous_value, self._max_schrittweite
             )
-            if vorlauf_soll_effektiv != vorlauf_soll_geliefert:
+            if vorlauf_soll_effektiv != vorlauf_soll_and_features.vorlauf:
                 _LOGGER.warning(
                     "Sollwert-Sprung begrenzt: %.1f°C -> %.1f°C (max %.1fK pro Update)",
-                    vorlauf_soll_geliefert,
+                    vorlauf_soll_and_features.vorlauf,
                     vorlauf_soll_effektiv,
                     self._max_schrittweite,
+                )
+
+            # 2. Totzonen-Klemme: siehe klemme_vorlauf_soll(). Eine
+            # Vorhersage in der toten Zone (< Tv+Hysterese) wird bei
+            # Heizbedarf auf die WP-Startschwelle angehoben — ungedrosselt,
+            # damit die WP sofort starten kann.
+            vorlauf_soll_geliefert = vorlauf_soll_effektiv
+            vorlauf_soll_effektiv = klemme_vorlauf_soll(
+                vorlauf_soll_effektiv,
+                sensor_values,
+                self._hysterese,
+                self._controller.max_vorlauf,
+            )
+            if vorlauf_soll_effektiv != vorlauf_soll_geliefert:
+                _LOGGER.info(
+                    "Heizbedarf, Vorhersage %.1f°C in toter Zone (< Tv+%.1fK): geklemmt auf %.1f°C",
+                    vorlauf_soll_geliefert,
+                    self._hysterese,
+                    vorlauf_soll_effektiv,
                 )
 
             # Reward-Zuschreibung: Der Anker der frisch erstellten Erfahrung

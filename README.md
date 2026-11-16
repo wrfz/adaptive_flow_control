@@ -1,8 +1,8 @@
 # Heatpump Flow Control
 
-ML-basierte Vorlauf-Sollwert-Regelung für Wärmepumpen (HPSU) als Home-Assistant-Custom-Integration.
+ML-basierte Vorlauf-Sollwert-Regelung für Luftwärmepumpen als Home-Assistant-Custom-Integration.
 
-Die Integration ersetzt (oder ergänzt) die starre Heizkurve durch ein Online-Lernmodell, das den Vorlauf-Sollwert an die reale Heizsituation anpasst. Der berechnete Wert wird als `number`-Entity bereitgestellt und z. B. per Automation oder pyscript an die Wärmepumpe weitergereicht.
+Die Integration ersetzt (oder ergänzt) die starre Heizkurve durch ein Online-Lernmodell, das den Vorlauf-Sollwert an die reale Heizsituation anpasst. Der berechnete Wert wird als `number`-Entity bereitgestellt und z. B. per Automation, pyscript oder Bridge an die Wärmepumpe weitergereicht — unabhängig vom Reglertyp (CAN, Modbus, MQTT, …).
 
 ---
 
@@ -32,9 +32,7 @@ Vorlauf IST ─┘                                        ▼
 
 1. **Vorhersage:** Aus aktuellen Sensordaten wird ein Feature-Vektor gebaut, das river-Modell sagt den Vorlauf-Sollwert voraus.
 2. **Lieferung:** Die Vorhersage läuft durch mehrere Sicherheitsketten und landet als Wert auf der Number-Entity, die die Wärmepumpe als Ziel-Vorlauf nutzt.
-3. **Lernen (zeitversetzt):** Jede Vorhersage wird als *Erfahrung* gespeichert. Vier Stunden später wird sie bewertet: Wie hat sich der Raumtemperatur-Regelfehler entwickelt? Daraus lernt das Modell eine Korrektur auf die alte Vorhersage. So lernt das Modell von den *Folgen* seiner eigenen Entscheidungen (Delayed Reward) statt nur vom Ist-Zustand.
-
-### Entities
+3. **Lernen (zeitversetzt):** Jede Vorhersage wird als *Erfahrung* gespeichert. Vier Stunden später wird sie bewertet: Wie hat sich der Raumtemperatur-Regelfehler entwickelt? Daraus lernt das Modell eine Korrektur auf die alte Vorhersage. So lernt das Modell von den *Folgen* seiner eigenen Entscheidungen (Delayed Reward) statt nur vom Ist-Zustand.### Entities
 
 | Entity | Typ | Zweck |
 |---|---|---|
@@ -50,6 +48,8 @@ Ein Update läuft standardmäßig stündlich (zusätzliche Trigger: Zustandswech
 3. **Stabilisierung:** Direkt nach Heizbeginn wird 10 Minuten gewartet, damit sich die Anlage nach einem Start erst einpendelt (verhindert Lernen auf Übergangswerte).
 
 Läuft ein Update, wird ein parallel anlaufendes Update übersprungen (Lock).
+
+**Sofort-Update bei Sollwert-Änderung:** Zusätzlich zum Stundentimer reagiert die Integration auf Änderungen des `raum_soll`-Sensors — entprellt mit 60 Sekunden, damit Slider-Ziehen oder Zeitplan-Änderungen nicht eine Kette von Zyklen auslösen. Nach dem Entprellen läuft ein voller Regelzyklus mit allen Gates und Sicherheitsketten; die Wärmepumpe muss dann nicht bis zu einer Stunde auf die neue Einstellung warten. (`raum_ist`-Änderungen triggern bewusst nicht — die ändern sich laufend und würden das Lernen mit Redundanz fluten.)
 
 ### Feature-Vektor
 
@@ -79,8 +79,8 @@ Das Modell sieht pro Zyklus:
 |---|---|---|
 | 1. **Sanity-Band** (`sanity_band`, Standard 8 K) | Liegt die Vorhersage mehr als ±8 K neben der Heizkurve, gilt sie als Modellfehler (z. B. Extrapolation auf nie gesehene Feature-Kombinationen) und wird durch die Heizkurve ersetzt (Log: `Model liefert unrealistischen Wert … verwende Fallback-Heizkurve`). | Wildwuchs-Sprünge des Modells |
 | 2. **Bereichsgrenzen** | Klemmung auf `[min_vorlauf, max_vorlauf]`. | physikalisch unsinnige Werte |
-| 3. **HPSU-Klemme** (`hysterese`, Standard 3 K) | Die HPSU startet erst, wenn `VorlaufSoll ≥ Tv + 3 K`. Bei Heizbedarf (`raum_ist < raum_soll`) wird eine Vorhersage in dieser toten Zone auf mindestens `Tv + 3,5 K` geklemmt, sonst zykelt die WP oder startet nie (Log: `Heizbedarf, Vorhersage … in toter Zone … geklemmt`). | Kurzzyklen / Nichtstart |
-| 4. **Schrittweitenlimit** (`max_schrittweite`, Standard 1 K) | Max. Änderung des Sollwerts pro Zyklus (Log: `Sollwert-Sprung begrenzt …`). Im Normalbetrieb (stündliche Änderungen < 1 K) unsichtbar; es fängt nur Sprünge ab und ist ein permanentes Sicherheitsgeländer, kein temporärer Patch. | falsches Lern-Ereignis lässt die WP stundenlang Vollgas laufen |
+| 3. **Schrittweitenlimit** (`max_schrittweite`, Standard 1 K) | Max. Änderung des **Modellwerts** pro Zyklus (Log: `Sollwert-Sprung begrenzt …`). Im Normalbetrieb (stündliche Änderungen < 1 K) unsichtbar; es fängt nur Sprünge ab und ist ein permanentes Sicherheitsgeländer, kein temporärer Patch. | falsches Lern-Ereignis lässt die WP stundenlang Vollgas laufen |
+| 4. **Totzonen-Klemme** (`hysterese`, Standard 3 K) | Viele WP-Regler (z. B. HPSU) starten erst, wenn `VorlaufSoll ≥ Tv + 3 K`. Bei Heizbedarf (`raum_ist < raum_soll`) wird eine Vorhersage in dieser toten Zone auf mindestens `Tv + 3,5 K` geklemmt (Log: `Heizbedarf, Vorhersage … in toter Zone … geklemmt`). Die Klemme läuft **nach** dem Schrittweitenlimit und wird deshalb **nicht gedrosselt** — die deterministische Startregel des Reglers wirkt sofort, während Modell-Sprünge weiter begrenzt bleiben. | Kurzzyklen / Nichtstart / verzögerter Start nach Sollwert-Änderung |
 
 Das Schrittweitenlimit wird **nie automatisch ausgeschaltet**. Wenn das Modell später so verlässlich lernt, dass schnellere Anpassung gewünscht ist: Option `max_schrittweite` erhöhen (z. B. 2 K) oder auf `0` setzen (= aus).
 
@@ -97,7 +97,7 @@ Beim Update wird eine **Erfahrung** gespeichert: Zeitstempel, Feature-Vektor und
 
 ### Persistenz
 
-- Snapshot: `/config/heatpump_flow_control.model.json` (Modell, Erfahrungen, Zähler) — gespeichert am Ende jedes Update-Zyklus **und** beim Herunterfahren/Entfernen der Entity (Shutdown-Save), damit ungelernte Erfahrungen einen Restart überleben.
+- Snapshot: `/config/heatpump_flow_control.model.json` (Modell, Erfahrungen, Zähler) — gespeichert am Ende jedes Update-Zyklus, bei Entfernen/Neuladen der Integration **und** beim Herunterfahren von Home Assistant (STOP-Event), damit ungelernte Erfahrungen jeden Restart überleben.
 - Beim Start wird der Snapshot automatisch geladen (`Model restored from JSON …` im Log). Existiert er nicht, wird das Modell frisch aufgesetzt und synthetisch vortrainiert.
 - Manuelle Eingriffe: Der Sollwert kann jederzeit direkt auf der Number-Entity gesetzt werden (z. B. bei Urlaubsabwesenheit). Der nächste reguläre Zyklus übernimmt die Regelung wieder.
 
@@ -115,7 +115,7 @@ Die Integration wird über *Einstellungen → Geräte & Dienste → Integration 
 | **Raum-Ist-Sensor** | `sensor.*` mit aktueller Raumtemperatur (Referenzraum) |
 | **Raum-Soll-Sensor** | `sensor.*`, `input_number.*` oder `climate.*`, der den gewünschten Sollwert liefert |
 | **Vorlauf-Ist-Sensor** | `sensor.*` mit aktueller Vorlauf-Temperatur (Tv) |
-| **Vorlauf-Soll-Entity** | Das Ziel: `number.*`, `input_number.*` oder `climate.*`, in das der berechnete Sollwert geschrieben wird (bei CAN-gekoppelten HPSU typischerweise ein `number`, das pyscript/Bridge in den Sollwert schreibt) |
+| **Vorlauf-Soll-Entity** | Das Ziel: `number.*`, `input_number.*` oder `climate.*`, in das der berechnete Sollwert geschrieben wird (bei CAN-/Modbus-gekoppelten WPn typischerweise ein `number`, das pyscript/Bridge in den Regler-Sollwert schreibt) |
 | **is_heating-Entity** | `binary_sensor.*` — `on` = WP heizt (nicht Warmwasser/DHW). Pumptenagnostisch bauen, z. B. aus Betriebsart + BVV-/DHW-Signal |
 
 ### Optionale Parameter
@@ -128,7 +128,7 @@ Die Integration wird über *Einstellungen → Geräte & Dienste → Integration 
 | **min/max thermische Leistung** | 0.6 / 6.0 kW | – | Skalierungsreferenz für `thermische_leistung_relativ` |
 | **update_interval** | 60 min | 1–240 | Zykluszeit der Regelung |
 | **learning_rate** | 0.01 | 0.001–0.1 | Adam-Lernrate des Modells. Klein = langsam, stabil; groß = schnell, nervös |
-| **hysterese** | 3 K | 0–10 | HPSU-Schaltregel-Abstand für die Totzonen-Klemme (`Tv + hysterese + 0.5 K`) |
+| **hysterese** | 3 K | 0–10 | Schaltregel-Abstand des WP-Reglers für die Totzonen-Klemme (`Tv + hysterese + 0.5 K`) — an die Startschwelle des eigenen Reglers anpassen |
 | **max_schrittweite** | 1 K | 0–5 | Max. Sollwert-Änderung pro Zyklus. `0` = aus |
 | **sanity_band** | 8 K | 1–20 | Toleranzband um die Heizkurve. Nicht zu eng wählen — ein trainiertes Modell darf legitimerweise von der Heizkurve abweichen (real beobachtet: ~5.5 K bei kalten Aussentemperaturen) |
 
@@ -155,16 +155,18 @@ Zustand: Aussentemp 9.7 °C, Raum 23.0 °C, Raum-Soll 22.5 °C, Tv 30.5 °C, let
 1. Heizkurven-Fallback: `25 + (40−25)/35 × (15−9.7) + 2 × (22.5−23.0)` ≈ **26.3 °C** → Sanity-Band [18.3; 34.3].
 2. Modell-Vorhersage: **31.9 °C** → innerhalb des Bands → übernommen.
 3. Bereichsgrenze [25; 40]: unverändert.
-4. HPSU-Klemme: Raum ist warm genug (23.0 ≥ 22.5) → **kein** Heizbedarf → keine Klemme nötig.
+4. Totzonen-Klemme: Raum ist warm genug (23.0 ≥ 22.5) → **kein** Heizbedarf → keine Klemme nötig.
 5. Schrittweitenlimit: 31.9 > 30.5 + 1.0 → **begrenzt auf 31.5 °C** (Log: `Sollwert-Sprung begrenzt: 31.9°C → 31.5°C (max 1.0K pro Update)`).
 6. Geliefert: **31.5 °C** — und genau dieser Wert landet in der Erfahrung für das spätere Lernen.
 
-### Beispiel 2: Totzonen-Klemme verhindert WP-Zykling
+### Beispiel 2: Totzonen-Klemme verhindert WP-Zykling und verzögerten Start
 
-Zustand: Raum 21.8 °C, Soll 22.5 °C → Heizbedarf. Tv 30.1 °C. Modell sagt **28.0 °C**.
+Zustand: Raum 21.8 °C, Soll 22.5 °C → Heizbedarf. Tv 30.1 °C. Modell sagt **28.0 °C**, letzter gelieferter Wert 30.5 °C.
 
-- Die HPSU startet erst bei `Soll ≥ Tv + 3 K` = 33.1 K. Ein Soll von 28.0 °C läge in der Totzone: Die WP startet nie oder zykelt.
-- Klemme: `min_soll = 30.1 + 3.0 + 0.5 = 33.6 °C` → geliefert wird **33.6 °C** (Log: `Heizbedarf, Vorhersage 28.0°C in toter Zone (< Tv+3.5K): geklemmt auf 33.6°C`).
+- Die WP startet erst bei `Soll ≥ Tv + 3 K` = 33.1 K. Ein Soll von 28.0 °C läge in der Totzone: Die WP startet nie oder zykelt.
+- 1. Schrittweitenlimit: 28.0 < 30.5 − 1 → auf **29.5 °C** begrenzt (Modellschutz).
+- 2. Totzonen-Klemme: `min_soll = 30.1 + 3.0 + 0.5 = 33.6 °C` → geliefert wird **33.6 °C** (Log: `Heizbedarf, Vorhersage 29.5°C in toter Zone (< Tv+3.5K): geklemmt auf 33.6°C`) — **ungedrosselt**, die WP startet sofort.
+- Wäre die Klemme (wie früher) vor dem Schrittweitenlimit gelaufen, hätte sie den Sollwert auf 31.5 °C gestaucht und die WP erst nach 2–3 weiteren Zyklen gestartet.
 - Die Erfahrung speichert 33.6 °C (den gelieferten Wert), nicht die 28.0.
 
 ### Beispiel 3: Sanity-Band fängt Extrapolation ab
@@ -193,17 +195,17 @@ Vor 4.1 h wurden geliefert: 28.4 °C bei Raum-Soll 22.5 °C. Jetzt: Raum 21.8 °
 
 ### Beispiel 6: Anbindung an die Wärmepumpe
 
-Die Integration schreibt nur ihre eigene Number-Entity. Die Kopie in die WP ist bewusst ausgelagert, z. B. per pyscript (30-s-Zyklus):
+Die Integration schreibt nur ihre eigene Number-Entity. Die Weitergabe an den WP-Regler ist bewusst ausgelagert und reglerspezifisch — typische Wege: pyscript, Automation mit `number.set_value`, Modbus-/MQTT-Bridge. Beispiel CAN-gekoppelte HPSU per pyscript:
 
 ```yaml
 # pyscript/heat_pump_set_vorlauf_soll_geregelt.py — vereinfacht
 @state_trigger("number.heatpump_flow_control_vorlauf_soll")
-def copy_to_hpsu():
+def copy_to_regler():
     soll = number.heatpump_flow_control_vorlauf_soll
     number.set_value("number.hpsu_can_vorlauf_soll_geregelt", str(soll))
 ```
 
-Wichtig: Manuelle Eingriffe immer auf der **ML-Number** machen, nicht auf der HPSU-Number — sonst überschreibt der Kopierzyklus die Eingabe innerhalb von Sekunden.
+Wichtig: Manuelle Eingriffe immer auf der **ML-Number** machen, nicht auf der Kopie für den Regler — sonst überschreibt der Kopierzyklus die Eingabe innerhalb von Sekunden.
 
 ---
 
@@ -226,9 +228,10 @@ Warnungen, auf die man achten sollte:
 
 | Log-Zeile | Bedeutung |
 |---|---|
+| `raum_soll-Änderung: sofortiges Update (entprellt 60s)` | Sollwert wurde geändert — voller Regelzyklus läuft 60 s nach der letzten Änderung |
 | `Sollwert-Sprung begrenzt` | Schrittweitenlimit griff — beobachten, ob es häufig bei Normalbetrieb auftritt (dann wäre `max_schrittweite` zu eng oder das Modell unruhig) |
 | `Model liefert unrealistischen Wert` | Sanity-Band griff — häufigeres Auftreten deutet auf fehlende/verzerrte Trainingsdaten hin |
-| `Heizbedarf, Vorhersage … in toter Zone` | Klemme griff — normal bei kleinen Raumabweichungen |
+| `Heizbedarf, Vorhersage … in toter Zone` | Totzonen-Klemme griff — normal bei kleinen Raumabweichungen; hebt auf die WP-Startschwelle an |
 | `Not in heating mode - skipping update` | Gate: kein Heizbetrieb (Warmwasser/Absenkung) — normal |
 
 ---
