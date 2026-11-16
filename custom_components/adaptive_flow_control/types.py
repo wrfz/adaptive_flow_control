@@ -153,6 +153,9 @@ class Erfahrung:
     # Weight factor for the learning step (1.0 = normal, < 1 = damped,
     # e.g. experiences from raum_soll-triggered immediate cycles).
     gewicht_faktor: float = 1.0
+    # Corrected target and weight, set during learning (None = not yet learned)
+    learned_target: float | None = None
+    learned_weight: float | None = None
 
 @dataclass
 class VorlaufSollWeight:

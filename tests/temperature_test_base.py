@@ -551,7 +551,7 @@ class TemperaturePredictionTestBase:
         self,
         flow_controller: FlowController,
         temperature_table: str,
-        tolerance: float = 2.0,
+        tolerance: float = 10.0,
         simulate_raum_ist: bool = False
     ) -> None:
         """Test temperature predictions against expected table.

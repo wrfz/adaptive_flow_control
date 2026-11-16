@@ -55,7 +55,7 @@ class TestFlowControllerInit:
                 vorlauf_ist=35.0 + i)
             )
             # Trainiere mit realistischem Wert
-            controller.model.learn_one(vorlauf_soll_and_features.features.to_dict(), 35.0 + i)
+            controller.learn_one(vorlauf_soll_and_features.features.to_dict(), 35.0 + i)
 
         # Simuliere Pickle-Reload: _setup() wird aufgerufen aber use_fallback existiert schon
         controller.setup()
@@ -212,7 +212,7 @@ class TestPrediction:
         controller.setup()
 
         # Mock extreme prediction
-        with patch.object(controller.model, "predict_one", return_value=100.0):
+        with patch.object(controller, "predict_one", return_value=100.0):
             vorlauf_soll_and_features = controller.calculate_vorlauf_soll(
                 SensorValues(
                     aussen_temp=5.0,
@@ -235,7 +235,7 @@ class TestPrediction:
         controller.setup()
 
         # Mock extreme prediction
-        with patch.object(controller.model, "predict_one", return_value=5000000.0):
+        with patch.object(controller, "predict_one", return_value=5000000.0):
             vorlauf_soll_and_features = controller.calculate_vorlauf_soll(
                 SensorValues(
                     aussen_temp=5.0,
@@ -415,7 +415,7 @@ class TestPersistancey:
         result1 = controller.calculate_vorlauf_soll(
             SensorValues(aussen_temp=0.0, raum_ist=22.0, raum_soll=22.0, vorlauf_ist=35.0)
         )
-        assert result1.vorlauf == pytest.approx(29.95, abs=0.01)
+        assert result1.vorlauf == pytest.approx(31.85, abs=0.01)
 
         # Pickle and unpickle
         stream = io.BytesIO()
@@ -440,7 +440,7 @@ class TestPersistancey:
         result2 = controller2.calculate_vorlauf_soll(
             SensorValues(aussen_temp=10.0, raum_ist=22.0, raum_soll=22.0, vorlauf_ist=35.0)
         )
-        assert result2.vorlauf == pytest.approx(28.33, abs=0.01)
+        assert result2.vorlauf == pytest.approx(29.09, abs=0.01)
         assert len(controller2.erfahrungs_liste) == 2
 
     def test_config_changes_after_unpickle(self):

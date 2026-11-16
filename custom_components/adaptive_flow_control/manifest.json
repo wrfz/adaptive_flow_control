@@ -2,7 +2,7 @@
   "domain": "adaptive_flow_control",
   "name": "Adaptive Flow Control",
   "documentation": "https://github.com/wrfz/adaptive-flow-control",
-  "requirements": ["river==0.27.0"],
+  "requirements": ["numpy>=1.26.0"],
   "codeowners": ["@wrfz"],
   "version": "2025.12.4",
   "config_flow": true,

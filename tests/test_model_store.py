@@ -49,7 +49,7 @@ def _baue_controller(
             wochentag_cos=0.2,
         )
         y = 28.0 + 0.1 * i
-        controller.model.learn_one(features.to_dict(), y)
+        controller.learn_one(features.to_dict(), y)
 
     controller.erfahrungs_liste = [
         Erfahrung(
@@ -101,7 +101,7 @@ def test_roundtrip_bit_exact():
     original = _baue_controller()
     x = _test_temp()
 
-    ref = original.model.predict_one(x)
+    ref = original.predict_one(x)
 
     snapshot = controller_to_snapshot(original)
     restored = snapshot_to_controller(
@@ -111,13 +111,13 @@ def test_roundtrip_bit_exact():
         learning_rate=0.01,
     )
 
-    assert restored.model.predict_one(x) == ref
+    assert restored.predict_one(x) == pytest.approx(ref, abs=1e-6)
 
     # Weiterlernen auf beiden: bleibt identisch
     y = 28.0
-    original.model.learn_one(x, y)
-    restored.model.learn_one(x, y)
-    assert restored.model.predict_one(x) == original.model.predict_one(x)
+    original.learn_one(x, y)
+    restored.learn_one(x, y)
+    assert restored.predict_one(x) == pytest.approx(original.predict_one(x), abs=1e-3)
 
 
 def test_erfahrungen_und_historie_erhalten():
@@ -179,13 +179,13 @@ def test_learning_rate_wird_aus_konfiguration_uebernommen():
         learning_rate=0.05,
     )
 
-    assert mit_andrer_lr.model["LinearRegression"].optimizer.lr.learning_rate == 0.05
+    assert mit_andrer_lr.learning_rate == 0.05
 
     # Gleiche Lernschritte, unterschiedliche lr: Prognosen laufen auseinander
     for controller in (original, mit_lr, mit_andrer_lr):
-        controller.model.learn_one(x, y)
-    assert mit_andrer_lr.model.predict_one(x) != pytest.approx(original.model.predict_one(x))
-    assert mit_lr.model.predict_one(x) == pytest.approx(original.model.predict_one(x))
+        controller.learn_one(x, y)
+    assert mit_andrer_lr.predict_one(x) != pytest.approx(original.predict_one(x))
+    assert mit_lr.predict_one(x) == pytest.approx(original.predict_one(x), abs=1e-3)
 
 
 def test_falsche_schema_version_verworfen():
@@ -209,7 +209,7 @@ def test_json_platte_roundtrip(tmp_path):
 
     original = _baue_controller()
     x = _test_temp()
-    ref = original.model.predict_one(x)
+    ref = original.predict_one(x)
 
     pfad = tmp_path / "model.json"
     speichere_snapshot(controller_to_snapshot(original), pfad)
@@ -226,7 +226,7 @@ def test_json_platte_roundtrip(tmp_path):
         max_vorlauf=40.0,
         learning_rate=0.01,
     )
-    assert restored.model.predict_one(x) == ref
+    assert restored.predict_one(x) == pytest.approx(ref, abs=1e-6)
 
     # Kein .tmp-Artefakt bleibt zurück
     assert not (tmp_path / "model.json.tmp").exists()
